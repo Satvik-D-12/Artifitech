@@ -1,1581 +1,1233 @@
 import streamlit as st
-import json
+import streamlit.components.v1 as components
+import random
 import time
+import datetime
+import re
 from gemini_helper import (
-    generate_all_content,
-    generate_hooks,
-    generate_series,
-    generate_scores,
-    generate_carousel,
-    generate_youtube_script,
-    generate_twitter_thread,
-    repurpose_content,
-    check_api_status
+    generate_full_content, generate_hooks,
+    generate_series, generate_carousel,
+    generate_thread, repurpose_content
 )
 
-# =====================================
+# ══════════════════════════════════════════
 # PAGE CONFIG
-# =====================================
-
+# ══════════════════════════════════════════
 st.set_page_config(
     page_title="ReelMind AI",
     page_icon="🎬",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
-# =====================================
-# INITIALIZE SESSION STATE
-# =====================================
+# ══════════════════════════════════════════
+# SESSION STATE
+# ══════════════════════════════════════════
+for key, default in [
+    ("history", []), ("theme", "dark"),
+    ("last_result", None), ("last_scores", None),
+    ("generated", False)
+]:
+    if key not in st.session_state:
+        st.session_state[key] = default
 
-if "history" not in st.session_state:
-    st.session_state.history = []
-if "favorites" not in st.session_state:
-    st.session_state.favorites = []
-if "last_result" not in st.session_state:
-    st.session_state.last_result = None
-if "last_scores" not in st.session_state:
-    st.session_state.last_scores = None
-if "last_meta" not in st.session_state:
-    st.session_state.last_meta = {}
-if "gen_count" not in st.session_state:
-    st.session_state.gen_count = 0
+# ══════════════════════════════════════════
+# THEME
+# ══════════════════════════════════════════
+IS_DARK = st.session_state.theme == "dark"
+T = {
+    "bg":      "#080808" if IS_DARK else "#f0ede8",
+    "bg2":     "#0f0f0f" if IS_DARK else "#e8e4de",
+    "bg3":     "#161616" if IS_DARK else "#dedad3",
+    "bg4":     "#1e1e1e" if IS_DARK else "#d0ccc4",
+    "rule":    "#1e1e1e" if IS_DARK else "#ccc8bf",
+    "rule2":   "#2a2a2a" if IS_DARK else "#b8b3a8",
+    "text":    "#f0ede8" if IS_DARK else "#0f0d0a",
+    "text2":   "#999"    if IS_DARK else "#4a4540",
+    "text3":   "#555"    if IS_DARK else "#7a7268",
+    "text4":   "#333"    if IS_DARK else "#aaa49a",
+    "accent":  "#ff4b2b",
+    "accent2": "#ff7a5c",
+    "purple":  "#8b5cf6",
+    "blue":    "#3b82f6",
+    "green":   "#22c55e",
+    "yellow":  "#eab308",
+    "orange":  "#f97316",
+    "glass":   "rgba(255,255,255,0.04)" if IS_DARK else "rgba(0,0,0,0.04)",
+    "glassborder": "rgba(255,255,255,0.08)" if IS_DARK else "rgba(0,0,0,0.08)",
+}
 
-# =====================================
-# PREMIUM CSS + JS EFFECTS
-# =====================================
-
-st.markdown("""
+# ══════════════════════════════════════════
+# PREMIUM EFFECTS COMPONENT
+# ══════════════════════════════════════════
+def inject_premium_effects():
+    components.html(f"""
+<!DOCTYPE html>
+<html>
+<head>
 <style>
-
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap');
-
-/* ── RESET & BASE ── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-:root {
-  --bg:       #050508;
-  --bg2:      #0b0b12;
-  --bg3:      #111120;
-  --surface:  #13131f;
-  --border:   rgba(255,255,255,0.06);
-  --border2:  rgba(255,255,255,0.12);
-  --text:     #e8e6f0;
-  --muted:    #6b6882;
-  --dim:      #2a2840;
-  --accent:   #7c5cfc;
-  --accent2:  #c94fff;
-  --fire:     #ff4b2b;
-  --cyan:     #00e5ff;
-  --gold:     #ffd166;
-  --green:    #06ffa5;
-  --glow1: rgba(124,92,252,0.15);
-  --glow2: rgba(201,79,255,0.12);
-  --glow3: rgba(0,229,255,0.10);
-}
-
-html, body, [data-testid="stAppViewContainer"] {
-    background-color: var(--bg) !important;
-    color: var(--text) !important;
-    font-family: 'Space Grotesk', sans-serif !important;
-}
-
-[data-testid="stAppViewContainer"] > .main {
-    background: var(--bg) !important;
-}
-
-[data-testid="stHeader"] { background: transparent !important; display: none; }
-
-.block-container {
-    padding: 0 !important;
-    max-width: 100% !important;
-}
-
-/* ── AURORA BACKGROUND ── */
-#aurora-bg {
-    position: fixed;
-    top: 0; left: 0;
-    width: 100vw; height: 100vh;
-    pointer-events: none;
-    z-index: 0;
-    overflow: hidden;
-}
-
-.aurora-orb {
-    position: absolute;
-    border-radius: 50%;
-    filter: blur(80px);
-    animation: auroraDrift linear infinite;
-    opacity: 0.35;
-}
-
-.aurora-orb:nth-child(1) {
-    width: 600px; height: 600px;
-    background: radial-gradient(circle, rgba(124,92,252,0.6), transparent 70%);
-    top: -200px; left: -100px;
-    animation-duration: 20s;
-}
-.aurora-orb:nth-child(2) {
-    width: 500px; height: 500px;
-    background: radial-gradient(circle, rgba(201,79,255,0.5), transparent 70%);
-    top: 30%; right: -150px;
-    animation-duration: 25s;
-    animation-delay: -8s;
-}
-.aurora-orb:nth-child(3) {
-    width: 400px; height: 400px;
-    background: radial-gradient(circle, rgba(0,229,255,0.4), transparent 70%);
-    bottom: -100px; left: 40%;
-    animation-duration: 18s;
-    animation-delay: -4s;
-}
-.aurora-orb:nth-child(4) {
-    width: 300px; height: 300px;
-    background: radial-gradient(circle, rgba(255,75,43,0.3), transparent 70%);
-    top: 60%; left: 20%;
-    animation-duration: 22s;
-    animation-delay: -12s;
-}
-
-@keyframes auroraDrift {
-    0%   { transform: translate(0, 0) scale(1); }
-    25%  { transform: translate(60px, -40px) scale(1.08); }
-    50%  { transform: translate(30px, 70px) scale(0.95); }
-    75%  { transform: translate(-50px, 30px) scale(1.05); }
-    100% { transform: translate(0, 0) scale(1); }
-}
-
-/* ── NEURAL NETWORK CANVAS ── */
-#neural-canvas {
-    position: fixed;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    pointer-events: none;
-    z-index: 1;
-    opacity: 0.35;
-}
-
-/* ── CURSOR GLOW ── */
-#cursor-glow {
-    position: fixed;
-    pointer-events: none;
-    z-index: 9999;
-    width: 300px; height: 300px;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(124,92,252,0.12) 0%, transparent 70%);
-    transform: translate(-50%, -50%);
-    transition: transform 0.1s ease;
-    top: -999px; left: -999px;
-}
-
-#cursor-dot {
-    position: fixed;
-    pointer-events: none;
-    z-index: 10000;
-    width: 8px; height: 8px;
-    background: var(--accent);
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-    top: -999px; left: -999px;
-    box-shadow: 0 0 12px var(--accent), 0 0 24px var(--accent2);
-    transition: width 0.2s, height 0.2s, background 0.2s;
-}
-
-/* ── CONTENT WRAPPER ── */
-.rm-wrapper {
-    position: relative;
-    z-index: 10;
-}
-
-/* ── HERO ── */
-.rm-hero {
-    padding: 48px 60px 40px;
-    border-bottom: 1px solid var(--border);
-    position: relative;
-    overflow: hidden;
-}
-
-.rm-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: rgba(124,92,252,0.12);
-    border: 1px solid rgba(124,92,252,0.3);
-    padding: 6px 14px;
-    border-radius: 100px;
-    font-family: 'Space Mono', monospace;
-    font-size: 9px;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    color: var(--accent);
-    margin-bottom: 20px;
-}
-
-.rm-badge-dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: var(--green);
-    box-shadow: 0 0 8px var(--green);
-    animation: pulse 2s ease infinite;
-}
-
-@keyframes pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50%       { opacity: 0.5; transform: scale(0.7); }
-}
-
-.rm-logo {
-    font-family: 'Syne', sans-serif;
-    font-size: clamp(44px, 5.5vw, 80px);
-    font-weight: 800;
-    line-height: 0.95;
-    letter-spacing: -3px;
-    color: var(--text);
-    margin-bottom: 16px;
-    position: relative;
-    display: inline-block;
-}
-
-.rm-logo .acc { 
-    background: linear-gradient(135deg, var(--accent), var(--accent2));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    filter: drop-shadow(0 0 20px rgba(124,92,252,0.5));
-}
-
-.rm-logo-glow {
-    position: absolute;
-    top: 50%; left: -20px;
-    transform: translateY(-50%);
-    width: 120%; height: 150%;
-    background: radial-gradient(ellipse, rgba(124,92,252,0.15) 0%, transparent 70%);
-    pointer-events: none;
-    z-index: -1;
-}
-
-.rm-sub {
-    font-size: 14px;
-    color: var(--muted);
-    font-weight: 300;
-    max-width: 460px;
-    line-height: 1.7;
-    margin-bottom: 28px;
-}
-
-.rm-stats {
-    display: flex;
-    gap: 0;
-    border: 1px solid var(--border);
-    display: inline-flex;
-}
-
-.rm-stat {
-    padding: 12px 24px;
-    border-right: 1px solid var(--border);
-    text-align: center;
-}
-
-.rm-stat:last-child { border-right: none; }
-
-.rm-stat-num {
-    font-family: 'Space Mono', monospace;
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--text);
-    display: block;
-}
-
-.rm-stat-label {
-    font-size: 9px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--muted);
-    display: block;
-    margin-top: 2px;
-}
-
-/* ── API STATUS ── */
-.api-status {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-family: 'Space Mono', monospace;
-    font-size: 9px;
-    letter-spacing: 2px;
-    color: var(--muted);
-    margin-left: 20px;
-}
-
-.api-dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-}
-
-.api-dot.online { background: var(--green); box-shadow: 0 0 8px var(--green); }
-.api-dot.offline { background: var(--fire); box-shadow: 0 0 8px var(--fire); }
-
-/* ── STREAMLIT OVERRIDES ── */
-.stTextInput > div > div > input,
-.stTextArea > div > div > textarea {
-    background: rgba(255,255,255,0.03) !important;
-    border: 1px solid var(--border2) !important;
-    border-radius: 8px !important;
-    color: var(--text) !important;
-    font-family: 'Space Grotesk', sans-serif !important;
-    font-size: 14px !important;
-    padding: 14px 16px !important;
-    transition: border-color 0.2s, box-shadow 0.2s !important;
-    backdrop-filter: blur(10px) !important;
-}
-
-.stTextInput > div > div > input:focus,
-.stTextArea > div > div > textarea:focus {
-    border-color: var(--accent) !important;
-    box-shadow: 0 0 0 3px rgba(124,92,252,0.15), 0 0 20px rgba(124,92,252,0.1) !important;
-    outline: none !important;
-}
-
-.stTextInput > div > div > input::placeholder,
-.stTextArea > div > div > textarea::placeholder {
-    color: var(--dim) !important;
-}
-
-[data-baseweb="select"] > div {
-    background: rgba(255,255,255,0.03) !important;
-    border: 1px solid var(--border2) !important;
-    border-radius: 8px !important;
-    backdrop-filter: blur(10px) !important;
-    color: var(--text) !important;
-}
-
-[data-baseweb="popover"], [data-baseweb="menu"] {
-    background: #14141f !important;
-    border: 1px solid var(--border2) !important;
-    border-radius: 8px !important;
-}
-
-[data-baseweb="option"] {
-    background: transparent !important;
-    color: var(--text) !important;
-    font-family: 'Space Grotesk', sans-serif !important;
-}
-
-[data-baseweb="option"]:hover { background: rgba(124,92,252,0.12) !important; }
-
-label, .stSelectbox label, .stTextInput label, .stTextArea label {
-    color: var(--muted) !important;
-    font-family: 'Space Mono', monospace !important;
-    font-size: 9px !important;
-    letter-spacing: 2px !important;
-    text-transform: uppercase !important;
-}
-
-/* ── GENERATE BUTTON ── */
-.stButton > button {
-    background: linear-gradient(135deg, var(--accent), var(--accent2)) !important;
-    color: #fff !important;
-    border: none !important;
-    border-radius: 10px !important;
-    font-family: 'Space Mono', monospace !important;
-    font-size: 11px !important;
-    font-weight: 700 !important;
-    letter-spacing: 3px !important;
-    text-transform: uppercase !important;
-    padding: 16px 32px !important;
-    width: 100% !important;
-    cursor: pointer !important;
-    transition: all 0.3s !important;
-    position: relative !important;
-    overflow: hidden !important;
-    box-shadow: 0 4px 24px rgba(124,92,252,0.3), 0 0 40px rgba(124,92,252,0.15) !important;
-}
-
-.stButton > button:hover {
-    transform: translateY(-2px) !important;
-    box-shadow: 0 8px 40px rgba(124,92,252,0.5), 0 0 60px rgba(201,79,255,0.2) !important;
-    filter: brightness(1.1) !important;
-}
-
-.stButton > button:active {
-    transform: scale(0.98) !important;
-}
-
-/* ── DOWNLOAD BUTTON ── */
-.stDownloadButton > button {
-    background: transparent !important;
-    color: var(--muted) !important;
-    border: 1px solid var(--border2) !important;
-    border-radius: 8px !important;
-    font-family: 'Space Mono', monospace !important;
-    font-size: 9px !important;
-    letter-spacing: 2px !important;
-    text-transform: uppercase !important;
-    padding: 10px 20px !important;
-    transition: all 0.2s !important;
-}
-
-.stDownloadButton > button:hover {
-    border-color: var(--accent) !important;
-    color: var(--accent) !important;
-    box-shadow: 0 0 16px rgba(124,92,252,0.2) !important;
-    background: rgba(124,92,252,0.06) !important;
-}
-
-/* ── TABS ── */
-.stTabs [data-baseweb="tab-list"] {
-    background: transparent !important;
-    border-bottom: 1px solid var(--border) !important;
-    gap: 0 !important;
-}
-
-.stTabs [data-baseweb="tab"] {
-    background: transparent !important;
-    color: var(--muted) !important;
-    font-family: 'Space Mono', monospace !important;
-    font-size: 9px !important;
-    letter-spacing: 2px !important;
-    text-transform: uppercase !important;
-    padding: 12px 20px !important;
-    border-radius: 0 !important;
-    border-bottom: 2px solid transparent !important;
-    transition: all 0.2s !important;
-}
-
-.stTabs [aria-selected="true"] {
-    color: var(--accent) !important;
-    border-bottom-color: var(--accent) !important;
-    text-shadow: 0 0 16px rgba(124,92,252,0.6) !important;
-}
-
-.stTabs [data-baseweb="tab-panel"] {
-    padding: 0 !important;
-    background: transparent !important;
-}
-
-/* ── GLASS OUTPUT CARD ── */
-.rm-glass-card {
-    background: rgba(19,19,31,0.7);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid var(--border2);
-    border-radius: 16px;
-    padding: 28px;
-    margin-bottom: 16px;
-    position: relative;
-    overflow: hidden;
-    transition: all 0.35s ease;
-}
-
-.rm-glass-card::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 16px;
-    background: linear-gradient(135deg, rgba(124,92,252,0.08) 0%, transparent 60%);
-    pointer-events: none;
-}
-
-.rm-glass-card:hover {
-    border-color: rgba(124,92,252,0.4);
-    box-shadow: 0 8px 48px rgba(124,92,252,0.15), 0 0 0 1px rgba(124,92,252,0.1);
-    transform: translateY(-2px);
-}
-
-/* ── ELECTRIC BORDER (active panel) ── */
-@keyframes electricFlow {
-    0%   { background-position: 0% 50%; }
-    50%  { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-}
-
-.rm-electric {
-    position: relative;
-}
-
-.rm-electric::after {
-    content: '';
-    position: absolute;
-    inset: -2px;
-    border-radius: 18px;
-    background: linear-gradient(90deg, var(--accent), var(--accent2), var(--cyan), var(--accent));
-    background-size: 300% 300%;
-    animation: electricFlow 3s ease infinite;
-    z-index: -1;
-    opacity: 0.6;
-}
-
-/* ── CARD LABEL ── */
-.rm-card-label {
-    font-family: 'Space Mono', monospace;
-    font-size: 8px;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    color: var(--accent);
-    margin-bottom: 16px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.rm-card-label::before {
-    content: '';
-    width: 16px; height: 1px;
-    background: var(--accent);
-    display: inline-block;
-}
-
-.rm-card-body {
-    font-size: 13px;
-    line-height: 1.85;
-    color: #9994bb;
-    white-space: pre-wrap;
-    font-family: 'Space Grotesk', sans-serif;
-}
-
-/* ── COPY BUTTON ── */
-.copy-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: rgba(124,92,252,0.08);
-    border: 1px solid rgba(124,92,252,0.2);
-    border-radius: 6px;
-    padding: 6px 14px;
-    font-family: 'Space Mono', monospace;
-    font-size: 9px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--accent);
-    cursor: pointer;
-    transition: all 0.2s;
-    margin-top: 16px;
-    margin-right: 8px;
-}
-
-.copy-btn:hover {
-    background: rgba(124,92,252,0.16);
-    border-color: rgba(124,92,252,0.4);
-    box-shadow: 0 0 16px rgba(124,92,252,0.2);
-}
-
-/* ── SCORE METER ── */
-.score-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
-    margin-top: 8px;
-}
-
-.score-item {
-    background: rgba(255,255,255,0.02);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 14px 16px;
-    transition: all 0.3s;
-}
-
-.score-item:hover {
-    border-color: var(--border2);
-    background: rgba(124,92,252,0.06);
-}
-
-.score-label {
-    font-family: 'Space Mono', monospace;
-    font-size: 8px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 8px;
-    display: block;
-}
-
-.score-bar-wrap {
-    background: rgba(255,255,255,0.04);
-    border-radius: 100px;
-    height: 4px;
-    margin-bottom: 6px;
-    overflow: hidden;
-}
-
-.score-bar {
-    height: 4px;
-    border-radius: 100px;
-    transition: width 1.2s cubic-bezier(0.23,1,0.32,1);
-}
-
-.score-val {
-    font-family: 'Space Mono', monospace;
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--text);
-}
-
-.score-val span {
-    font-size: 10px;
-    color: var(--muted);
-}
-
-/* Score color helpers */
-.s-purple { background: linear-gradient(90deg, var(--accent), var(--accent2)); }
-.s-cyan   { background: linear-gradient(90deg, var(--cyan), var(--accent)); }
-.s-fire   { background: linear-gradient(90deg, var(--fire), var(--gold)); }
-.s-green  { background: linear-gradient(90deg, var(--green), var(--cyan)); }
-
-/* ── PROGRESS STEPS ── */
-.gen-progress {
-    padding: 20px 0;
-}
-
-.gen-step {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 0;
-    font-family: 'Space Mono', monospace;
-    font-size: 10px;
-    letter-spacing: 2px;
-    color: var(--dim);
-    transition: all 0.3s;
-}
-
-.gen-step.active {
-    color: var(--accent);
-}
-
-.gen-step.done {
-    color: var(--green);
-}
-
-.gen-step-dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background: var(--dim);
-    flex-shrink: 0;
-    transition: all 0.3s;
-}
-
-.gen-step.active .gen-step-dot {
-    background: var(--accent);
-    box-shadow: 0 0 12px var(--accent);
-    animation: pulse 1s ease infinite;
-}
-
-.gen-step.done .gen-step-dot {
-    background: var(--green);
-    box-shadow: 0 0 8px var(--green);
-}
-
-/* ── VIRAL VERDICT ── */
-.viral-verdict {
-    background: linear-gradient(135deg, rgba(124,92,252,0.1), rgba(201,79,255,0.06));
-    border: 1px solid rgba(124,92,252,0.25);
-    border-radius: 12px;
-    padding: 20px 24px;
-    margin: 16px 0;
-    position: relative;
-    overflow: hidden;
-}
-
-.viral-verdict::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, var(--accent), var(--accent2), transparent);
-}
-
-.viral-verdict-label {
-    font-family: 'Space Mono', monospace;
-    font-size: 8px;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    color: var(--accent);
-    margin-bottom: 8px;
-}
-
-.viral-verdict-text {
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--text);
-    line-height: 1.5;
-}
-
-.viral-tip {
-    font-size: 12px;
-    color: var(--muted);
-    margin-top: 8px;
-}
-
-/* ── SECTION DIVIDER ── */
-.rm-divider {
-    height: 1px;
-    background: linear-gradient(90deg, transparent, var(--border2), transparent);
-    margin: 32px 0;
-}
-
-/* ── HISTORY ITEM ── */
-.history-item {
-    background: rgba(255,255,255,0.02);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 12px 16px;
-    margin-bottom: 8px;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.history-item:hover {
-    border-color: var(--border2);
-    background: rgba(124,92,252,0.05);
-}
-
-.history-topic {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text);
-}
-
-.history-meta {
-    font-family: 'Space Mono', monospace;
-    font-size: 9px;
-    color: var(--muted);
-    margin-top: 4px;
-    letter-spacing: 1px;
-}
-
-/* ── WORD COUNT BADGE ── */
-.wc-badge {
-    display: inline-block;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 3px 10px;
-    font-family: 'Space Mono', monospace;
-    font-size: 9px;
-    letter-spacing: 1px;
-    color: var(--muted);
-    margin-left: 8px;
-}
-
-/* ── POST TIME ── */
-.post-time {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: rgba(6,255,165,0.06);
-    border: 1px solid rgba(6,255,165,0.2);
-    border-radius: 8px;
-    padding: 10px 16px;
-    font-family: 'Space Mono', monospace;
-    font-size: 10px;
-    letter-spacing: 1px;
-    color: var(--green);
-    margin-top: 12px;
-}
-
-/* ── SKELETON LOADER ── */
-.skeleton {
-    background: linear-gradient(90deg, var(--surface) 25%, var(--bg3) 50%, var(--surface) 75%);
-    background-size: 200% 100%;
-    animation: shimmer 1.5s infinite;
-    border-radius: 6px;
-    height: 14px;
-    margin-bottom: 10px;
-}
-
-.skeleton.wide { width: 100%; }
-.skeleton.mid  { width: 75%; }
-.skeleton.short { width: 45%; }
-.skeleton.tall  { height: 120px; }
-
-@keyframes shimmer {
-    0%   { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
-}
-
-/* ── EXPANDER ── */
-.streamlit-expanderHeader {
-    background: rgba(255,255,255,0.02) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 8px !important;
-    color: var(--muted) !important;
-    font-family: 'Space Mono', monospace !important;
-    font-size: 9px !important;
-    letter-spacing: 2px !important;
-}
-
-.streamlit-expanderContent {
-    background: var(--surface) !important;
-    border: 1px solid var(--border) !important;
-    border-top: none !important;
-    border-radius: 0 0 8px 8px !important;
-}
-
-/* ── SUCCESS / WARNING / ERROR ── */
-.stSuccess {
-    background: rgba(6,255,165,0.06) !important;
-    border: 1px solid rgba(6,255,165,0.2) !important;
-    border-radius: 8px !important;
-}
-
-.stWarning {
-    background: rgba(255,209,102,0.06) !important;
-    border: 1px solid rgba(255,209,102,0.2) !important;
-    border-radius: 8px !important;
-}
-
-.stSpinner > div {
-    border-top-color: var(--accent) !important;
-}
-
-/* ── RADIO ── */
-.stRadio > div {
-    gap: 8px !important;
-}
-
-.stRadio > div > label {
-    background: rgba(255,255,255,0.02) !important;
-    border: 1px solid var(--border) !important;
-    padding: 10px 18px !important;
-    border-radius: 8px !important;
-    cursor: pointer !important;
-    transition: all 0.2s !important;
-    color: var(--muted) !important;
-    font-size: 12px !important;
-}
-
-.stRadio > div > label:hover {
-    border-color: var(--accent) !important;
-    color: var(--accent) !important;
-    background: rgba(124,92,252,0.06) !important;
-}
-
-/* ── METRIC ── */
-[data-testid="stMetric"] {
-    background: rgba(255,255,255,0.02) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 10px !important;
-    padding: 16px !important;
-}
-
-[data-testid="stMetricLabel"] {
-    font-family: 'Space Mono', monospace !important;
-    font-size: 8px !important;
-    letter-spacing: 2px !important;
-    text-transform: uppercase !important;
-    color: var(--muted) !important;
-}
-
-[data-testid="stMetricValue"] {
-    font-family: 'Space Mono', monospace !important;
-    color: var(--text) !important;
-    font-size: 24px !important;
-}
-
-/* ── SCROLLBAR ── */
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: var(--bg); }
-::-webkit-scrollbar-thumb { background: var(--dim); border-radius: 100px; }
-::-webkit-scrollbar-thumb:hover { background: var(--accent); }
-
-/* ── FOOTER ── */
-.rm-footer {
-    padding: 20px 60px;
-    border-top: 1px solid var(--border);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 12px;
-}
-
-.rm-footer-text {
-    font-family: 'Space Mono', monospace;
-    font-size: 9px;
-    letter-spacing: 2px;
-    color: var(--dim);
-}
-
-/* ── PARTICLE CANVAS ── */
-#particle-canvas {
-    position: fixed;
-    pointer-events: none;
-    z-index: 9998;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-}
-
-/* ── MOBILE ── */
-@media (max-width: 768px) {
-    .rm-hero { padding: 28px 20px 24px; }
-    .rm-stats { flex-wrap: wrap; }
-    .rm-stat { padding: 10px 16px; }
-    .score-grid { grid-template-columns: 1fr; }
-    .rm-footer { padding: 16px 20px; flex-direction: column; text-align: center; }
-}
-
-/* Ensure content is above background layers */
-section[data-testid="stSidebar"] { z-index: 100; }
-.main .block-container { position: relative; z-index: 10; }
-
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+body {{ overflow:hidden; background:transparent; }}
+#canvas {{ position:fixed; top:0; left:0; width:100vw; height:100vh; pointer-events:none; z-index:0; }}
+#aurora {{ position:fixed; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:0; overflow:hidden; }}
+.aurora-layer {{
+    position:absolute; width:200%; height:200%;
+    background: conic-gradient(from var(--angle, 0deg) at 50% 50%,
+        transparent 0deg,
+        {T["accent"]}08 60deg,
+        {T["purple"]}06 120deg,
+        transparent 180deg,
+        {T["blue"]}05 240deg,
+        {T["accent"]}08 300deg,
+        transparent 360deg
+    );
+    animation: auroraRotate 12s linear infinite;
+    top:-50%; left:-50%;
+}}
+.aurora-layer-2 {{
+    position:absolute; width:150%; height:150%;
+    background: radial-gradient(ellipse at 20% 50%, {T["accent"]}07 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 20%, {T["purple"]}06 0%, transparent 50%),
+                radial-gradient(ellipse at 60% 80%, {T["blue"]}05 0%, transparent 50%);
+    animation: auroraFloat 8s ease-in-out infinite alternate;
+    top:-25%; left:-25%;
+}}
+@keyframes auroraRotate {{
+    from {{ transform: rotate(0deg); }}
+    to {{ transform: rotate(360deg); }}
+}}
+@keyframes auroraFloat {{
+    from {{ transform: translate(0px, 0px) scale(1); }}
+    to {{ transform: translate(30px, -20px) scale(1.05); }}
+}}
+#cursor-dot {{
+    position:fixed; width:8px; height:8px;
+    background:{T["accent"]}; border-radius:50%;
+    pointer-events:none; z-index:9999;
+    transform:translate(-50%,-50%);
+    transition:transform 0.05s;
+    box-shadow: 0 0 10px {T["accent"]}, 0 0 20px {T["accent"]}80;
+}}
+#cursor-ring {{
+    position:fixed; width:36px; height:36px;
+    border:1.5px solid {T["accent"]}80; border-radius:50%;
+    pointer-events:none; z-index:9998;
+    transform:translate(-50%,-50%);
+    transition:width 0.25s, height 0.25s, border-color 0.25s, background 0.25s;
+}}
+#cursor-ring.hovering {{
+    width:52px; height:52px;
+    border-color:{T["accent"]};
+    background:{T["accent"]}10;
+}}
+.particle {{
+    position:fixed; border-radius:50%;
+    pointer-events:none; z-index:9997;
+    animation: particleFade var(--dur) ease-out forwards;
+}}
+@keyframes particleFade {{
+    0% {{ transform: translate(0,0) scale(1); opacity:1; }}
+    100% {{ transform: translate(var(--tx), var(--ty)) scale(0); opacity:0; }}
+}}
+.trail-particle {{
+    position:fixed; width:4px; height:4px;
+    border-radius:50%; pointer-events:none; z-index:9996;
+    animation: trailFade 0.6s ease-out forwards;
+}}
+@keyframes trailFade {{
+    0% {{ opacity:0.8; transform:translate(-50%,-50%) scale(1); }}
+    100% {{ opacity:0; transform:translate(-50%,-50%) scale(0.1); }}
+}}
 </style>
-
-<!-- Aurora + Neural + Cursor layers -->
-<div id="aurora-bg">
-  <div class="aurora-orb"></div>
-  <div class="aurora-orb"></div>
-  <div class="aurora-orb"></div>
-  <div class="aurora-orb"></div>
+</head>
+<body>
+<div id="aurora">
+    <div class="aurora-layer"></div>
+    <div class="aurora-layer-2"></div>
 </div>
-<canvas id="neural-canvas"></canvas>
-<canvas id="particle-canvas"></canvas>
-<div id="cursor-glow"></div>
+<canvas id="canvas"></canvas>
 <div id="cursor-dot"></div>
-
+<div id="cursor-ring"></div>
 <script>
-// ── CURSOR EFFECTS ──
-(function() {
-    const glow = document.getElementById('cursor-glow');
-    const dot  = document.getElementById('cursor-dot');
-    let mx = -999, my = -999;
-    let gx = -999, gy = -999;
+// ── NEURAL NETWORK CANVAS ──
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-    document.addEventListener('mousemove', e => {
-        mx = e.clientX; my = e.clientY;
-        dot.style.left = mx + 'px';
-        dot.style.top  = my + 'px';
-    });
+const NODES = 55;
+const nodes = Array.from({{length: NODES}}, () => ({{
+    x: Math.random() * canvas.width,
+    y: Math.random() * canvas.height,
+    vx: (Math.random() - 0.5) * 0.4,
+    vy: (Math.random() - 0.5) * 0.4,
+    r: Math.random() * 2 + 1,
+    pulse: Math.random() * Math.PI * 2
+}}));
 
-    function lerpCursor() {
-        gx += (mx - gx) * 0.06;
-        gy += (my - gy) * 0.06;
-        glow.style.left = gx + 'px';
-        glow.style.top  = gy + 'px';
-        requestAnimationFrame(lerpCursor);
-    }
-    lerpCursor();
+let mouseX = canvas.width / 2, mouseY = canvas.height / 2;
 
-    // Magnetic button effect
-    document.addEventListener('mouseover', e => {
-        const btn = e.target.closest('button');
-        if (btn) {
-            dot.style.width = '40px';
-            dot.style.height = '40px';
-            dot.style.background = 'rgba(124,92,252,0.3)';
-        }
-    });
-    document.addEventListener('mouseout', e => {
-        const btn = e.target.closest('button');
-        if (btn) {
-            dot.style.width = '8px';
-            dot.style.height = '8px';
-            dot.style.background = '';
-        }
-    });
-})();
+function drawNetwork() {{
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-// ── NEURAL NETWORK ANIMATION ──
-(function() {
-    const canvas = document.getElementById('neural-canvas');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    
-    function resize() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-    }
-    resize();
-    window.addEventListener('resize', resize);
+    // Mouse influence
+    nodes.forEach(n => {{
+        const dx = mouseX - n.x, dy = mouseY - n.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < 120) {{
+            n.vx += dx / dist * 0.015;
+            n.vy += dy / dist * 0.015;
+        }}
+        n.vx *= 0.99; n.vy *= 0.99;
+        n.x += n.vx; n.y += n.vy;
+        n.pulse += 0.02;
+        if (n.x < 0 || n.x > canvas.width) n.vx *= -1;
+        if (n.y < 0 || n.y > canvas.height) n.vy *= -1;
+        n.x = Math.max(0, Math.min(canvas.width, n.x));
+        n.y = Math.max(0, Math.min(canvas.height, n.y));
+    }});
 
-    const nodes = Array.from({length: 55}, () => ({
-        x: Math.random() * canvas.width,
-        y: Math.random() * canvas.height,
-        vx: (Math.random() - 0.5) * 0.35,
-        vy: (Math.random() - 0.5) * 0.35,
-        r: Math.random() * 2 + 1
-    }));
+    // Draw connections
+    for (let i = 0; i < nodes.length; i++) {{
+        for (let j = i+1; j < nodes.length; j++) {{
+            const dx = nodes[i].x - nodes[j].x;
+            const dy = nodes[i].y - nodes[j].y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist < 110) {{
+                const alpha = (1 - dist/110) * 0.18;
+                ctx.beginPath();
+                ctx.strokeStyle = `rgba(255,75,43,${{alpha}})`;
+                ctx.lineWidth = 0.6;
+                ctx.moveTo(nodes[i].x, nodes[i].y);
+                ctx.lineTo(nodes[j].x, nodes[j].y);
+                ctx.stroke();
+            }}
+        }}
+    }}
 
-    function draw() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        // Connections
-        for (let i = 0; i < nodes.length; i++) {
-            for (let j = i + 1; j < nodes.length; j++) {
-                const dx = nodes[i].x - nodes[j].x;
-                const dy = nodes[i].y - nodes[j].y;
-                const dist = Math.sqrt(dx*dx + dy*dy);
-                if (dist < 160) {
-                    ctx.beginPath();
-                    ctx.moveTo(nodes[i].x, nodes[i].y);
-                    ctx.lineTo(nodes[j].x, nodes[j].y);
-                    const alpha = (1 - dist / 160) * 0.18;
-                    ctx.strokeStyle = `rgba(124,92,252,${alpha})`;
-                    ctx.lineWidth = 0.8;
-                    ctx.stroke();
-                }
-            }
-        }
+    // Draw nodes
+    nodes.forEach(n => {{
+        const pulse = Math.sin(n.pulse) * 0.5 + 0.5;
+        const alpha = 0.25 + pulse * 0.35;
+        const radius = n.r + pulse * 0.8;
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, radius, 0, Math.PI*2);
+        ctx.fillStyle = `rgba(255,75,43,${{alpha}})`;
+        ctx.fill();
+        // Glow
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, radius * 2.5, 0, Math.PI*2);
+        ctx.fillStyle = `rgba(255,75,43,${{alpha * 0.1}})`;
+        ctx.fill();
+    }});
 
-        // Nodes
-        nodes.forEach(n => {
-            ctx.beginPath();
-            ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(124,92,252,0.5)';
-            ctx.fill();
-            // Glow
-            ctx.beginPath();
-            ctx.arc(n.x, n.y, n.r + 3, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(124,92,252,0.08)';
-            ctx.fill();
-            
-            n.x += n.vx;
-            n.y += n.vy;
-            if (n.x < 0 || n.x > canvas.width)  n.vx *= -1;
-            if (n.y < 0 || n.y > canvas.height) n.vy *= -1;
-        });
-        
-        requestAnimationFrame(draw);
-    }
-    draw();
-})();
+    requestAnimationFrame(drawNetwork);
+}}
+drawNetwork();
 
-// ── PARTICLE EXPLOSION ON CLICK ──
-(function() {
-    const canvas = document.getElementById('particle-canvas');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+window.addEventListener('resize', () => {{
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-    window.addEventListener('resize', () => {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-    });
+}});
 
-    let particles = [];
-    const COLORS = ['#7c5cfc','#c94fff','#00e5ff','#ffd166','#06ffa5','#ff4b2b'];
+// ── CURSOR ──
+const dot = document.getElementById('cursor-dot');
+const ring = document.getElementById('cursor-ring');
+let rx = 0, ry = 0, mx = 0, my = 0;
 
-    window.burstParticles = function(x, y) {
-        for (let i = 0; i < 60; i++) {
-            const angle = (Math.PI * 2 / 60) * i + Math.random() * 0.3;
-            const speed = 3 + Math.random() * 8;
-            particles.push({
-                x, y,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed,
-                r: 2 + Math.random() * 4,
-                color: COLORS[Math.floor(Math.random() * COLORS.length)],
-                alpha: 1,
-                decay: 0.015 + Math.random() * 0.02
-            });
-        }
-    };
+window.addEventListener('mousemove', e => {{
+    mx = e.clientX; my = e.clientY;
+    dot.style.left = mx + 'px';
+    dot.style.top = my + 'px';
+    mouseX = mx; mouseY = my;
+    spawnTrail(mx, my);
+}});
 
-    function animate() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        particles = particles.filter(p => p.alpha > 0);
-        particles.forEach(p => {
-            p.x += p.vx;
-            p.y += p.vy;
-            p.vy += 0.12; // gravity
-            p.alpha -= p.decay;
-            p.vx *= 0.98;
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-            ctx.fillStyle = p.color;
-            ctx.globalAlpha = p.alpha;
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = p.color;
-            ctx.fill();
-            ctx.globalAlpha = 1;
-            ctx.shadowBlur = 0;
-        });
-        requestAnimationFrame(animate);
-    }
-    animate();
+function animRing() {{
+    rx += (mx - rx) * 0.13;
+    ry += (my - ry) * 0.13;
+    ring.style.left = rx + 'px';
+    ring.style.top = ry + 'px';
+    requestAnimationFrame(animRing);
+}}
+animRing();
 
-    // Attach to generate button clicks
-    document.addEventListener('click', e => {
-        const btn = e.target.closest('button');
-        if (btn && (btn.innerText.includes('GENERATE') || btn.innerText.includes('GET HOOKS') || btn.innerText.includes('BUILD') || btn.innerText.includes('CREATE'))) {
-            const rect = btn.getBoundingClientRect();
-            window.burstParticles(rect.left + rect.width/2, rect.top + rect.height/2);
-        }
-    });
-})();
+// ── CURSOR GLOW TRAIL ──
+let trailCount = 0;
+function spawnTrail(x, y) {{
+    if (trailCount++ % 2 !== 0) return;
+    const p = document.createElement('div');
+    p.className = 'trail-particle';
+    const colors = ['{T["accent"]}', '{T["purple"]}', '{T["accent2"]}'];
+    const col = colors[Math.floor(Math.random()*colors.length)];
+    const size = Math.random()*5 + 2;
+    p.style.cssText = `
+        left:${{x}}px; top:${{y}}px; width:${{size}}px; height:${{size}}px;
+        background:${{col}}; box-shadow: 0 0 6px ${{col}};
+    `;
+    document.body.appendChild(p);
+    setTimeout(() => p.remove(), 600);
+}}
 
-// ── 3D CARD TILT ──
-(function() {
-    function applyTilt() {
-        document.querySelectorAll('.rm-glass-card').forEach(card => {
-            if (card._tiltSet) return;
-            card._tiltSet = true;
-            card.addEventListener('mousemove', e => {
-                const rect = card.getBoundingClientRect();
-                const x = (e.clientX - rect.left) / rect.width  - 0.5;
-                const y = (e.clientY - rect.top)  / rect.height - 0.5;
-                card.style.transform = `perspective(800px) rotateY(${x * 6}deg) rotateX(${y * -6}deg) translateY(-2px)`;
-                card.style.transition = 'transform 0.1s ease';
-            });
-            card.addEventListener('mouseleave', () => {
-                card.style.transform = 'perspective(800px) rotateY(0deg) rotateX(0deg) translateY(0)';
-                card.style.transition = 'transform 0.5s ease';
-            });
-        });
-    }
-    // Re-run periodically to catch dynamically rendered cards
-    setInterval(applyTilt, 1000);
-})();
+// ── PARTICLE EXPLOSION (triggered from parent) ──
+window.explodeParticles = function(x, y) {{
+    const colors = ['{T["accent"]}', '{T["accent2"]}', '{T["purple"]}', '#fff', '{T["yellow"]}'];
+    for (let i = 0; i < 40; i++) {{
+        const p = document.createElement('div');
+        p.className = 'particle';
+        const angle = (Math.PI * 2 * i) / 40;
+        const dist = 60 + Math.random() * 120;
+        const size = Math.random()*8 + 3;
+        const col = colors[Math.floor(Math.random()*colors.length)];
+        const dur = (0.6 + Math.random()*0.8) + 's';
+        p.style.cssText = `
+            left:${{x}}px; top:${{y}}px;
+            width:${{size}}px; height:${{size}}px;
+            background:${{col}};
+            box-shadow: 0 0 ${{size*2}}px ${{col}};
+            --tx:${{Math.cos(angle)*dist}}px;
+            --ty:${{Math.sin(angle)*dist}}px;
+            --dur:${{dur}};
+        `;
+        document.body.appendChild(p);
+        setTimeout(() => p.remove(), parseFloat(dur)*1000);
+    }}
+}};
 
-// ── ANIMATED NUMBER COUNTER ──
-window.animateCount = function(el, target, duration) {
-    let start = 0;
-    const step = target / (duration / 16);
-    const timer = setInterval(() => {
-        start = Math.min(start + step, target);
-        el.textContent = Math.round(start);
-        if (start >= target) clearInterval(timer);
-    }, 16);
-};
-
-// ── PARALLAX on scroll/mouse ──
-(function() {
-    document.addEventListener('mousemove', e => {
-        const x = (e.clientX / window.innerWidth  - 0.5) * 20;
-        const y = (e.clientY / window.innerHeight - 0.5) * 20;
-        const logo = document.querySelector('.rm-logo');
-        if (logo) logo.style.transform = `translate(${x * 0.15}px, ${y * 0.15}px)`;
-        const orbs = document.querySelectorAll('.aurora-orb');
-        orbs.forEach((o, i) => {
-            const f = (i + 1) * 0.04;
-            o.style.transform += ` translate(${x * f}px, ${y * f}px)`;
-        });
-    });
-})();
+// ── HOVER DETECTION ──
+document.addEventListener('mouseover', e => {{
+    if (e.target.matches('button,a,input,select,[role="button"]')) {{
+        ring.classList.add('hovering');
+    }}
+}});
+document.addEventListener('mouseout', e => {{
+    if (e.target.matches('button,a,input,select,[role="button"]')) {{
+        ring.classList.remove('hovering');
+    }}
+}});
 </script>
-""", unsafe_allow_html=True)
+</body>
+</html>
+""", height=0, scrolling=False)
 
-# =====================================
-# HERO
-# =====================================
-
-st.markdown("""
-<div class="rm-wrapper">
-<div class="rm-hero">
-    <div class="rm-badge">
-        <span class="rm-badge-dot"></span>
-        AI Content Engine — v4.0
-    </div>
-    <div class="rm-logo">
-        Reel<span class="acc">Mind</span> AI
-        <div class="rm-logo-glow"></div>
-    </div>
-    <div class="rm-sub">
-        Generate scroll-stopping captions, hashtag stacks, viral scripts,
-        and thumbnail prompts — powered by Gemini 2.5 Flash.
-    </div>
-    <div class="rm-stats">
-        <div class="rm-stat">
-            <span class="rm-stat-num">4+</span>
-            <span class="rm-stat-label">Output types</span>
-        </div>
-        <div class="rm-stat">
-            <span class="rm-stat-num">30</span>
-            <span class="rm-stat-label">Hashtags</span>
-        </div>
-        <div class="rm-stat">
-            <span class="rm-stat-num">8</span>
-            <span class="rm-stat-label">AI Scores</span>
-        </div>
-        <div class="rm-stat">
-            <span class="rm-stat-num">∞</span>
-            <span class="rm-stat-label">Niches</span>
-        </div>
-    </div>
+# ══════════════════════════════════════════
+# GLASSMORPHISM CARD COMPONENT
+# ══════════════════════════════════════════
+def glass_card(title, content, accent_color=None, height=None):
+    color = accent_color or T["accent"]
+    h = f"max-height:{height}px;overflow-y:auto;" if height else ""
+    components.html(f"""
+<!DOCTYPE html><html><head>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+body {{ background:transparent; font-family:'Space Grotesk',sans-serif; padding:2px; }}
+.card {{
+    background: {T["glass"]};
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid {T["glassborder"]};
+    border-left: 2px solid {color};
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+    cursor: default;
+    {h}
+}}
+.card::before {{
+    content:''; position:absolute; inset:0;
+    background: radial-gradient(circle at var(--mx,50%) var(--my,50%), {color}12 0%, transparent 60%);
+    opacity:0; transition:opacity 0.3s;
+    pointer-events:none;
+}}
+.card:hover::before {{ opacity:1; }}
+.card:hover {{
+    border-color: {color}80;
+    box-shadow: 0 0 30px {color}15, 0 8px 32px rgba(0,0,0,0.3);
+    transform: translateY(-2px) perspective(600px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));
+}}
+.electric {{
+    position:absolute; inset:-1px;
+    background:transparent;
+    pointer-events:none;
+    border-radius:inherit;
+}}
+.electric::after {{
+    content:'';
+    position:absolute; inset:0;
+    border: 1px solid transparent;
+    border-image: linear-gradient(var(--angle,0deg), {color}, transparent, {color}, transparent) 1;
+    animation: electricRotate 2s linear infinite;
+    opacity:0;
+    transition:opacity 0.3s;
+}}
+.card:hover .electric::after {{ opacity:1; }}
+@keyframes electricRotate {{
+    from {{ --angle:0deg; }}
+    to {{ --angle:360deg; }}
+}}
+@property --angle {{
+    syntax:'<angle>'; initial-value:0deg; inherits:false;
+}}
+.card-title {{
+    font-family:'Space Mono',monospace;
+    font-size:8px; letter-spacing:3px;
+    text-transform:uppercase;
+    color:{color}; margin-bottom:10px;
+}}
+.card-body {{
+    font-size:13px; line-height:1.8;
+    color:{T["text2"]}; white-space:pre-wrap;
+}}
+</style>
+</head><body>
+<div class="card" id="card">
+    <div class="electric"></div>
+    <div class="card-title">{title}</div>
+    <div class="card-body">{content}</div>
 </div>
-""", unsafe_allow_html=True)
+<script>
+const card = document.getElementById('card');
+card.addEventListener('mousemove', e => {{
+    const r = card.getBoundingClientRect();
+    const x = ((e.clientX - r.left) / r.width) * 100;
+    const y = ((e.clientY - r.top) / r.height) * 100;
+    card.style.setProperty('--mx', x + '%');
+    card.style.setProperty('--my', y + '%');
+    const rx = ((e.clientY - r.top - r.height/2) / r.height) * -6;
+    const ry = ((e.clientX - r.left - r.width/2) / r.width) * 6;
+    card.style.setProperty('--rx', rx + 'deg');
+    card.style.setProperty('--ry', ry + 'deg');
+}});
+card.addEventListener('mouseleave', () => {{
+    card.style.setProperty('--rx', '0deg');
+    card.style.setProperty('--ry', '0deg');
+}});
+</script>
+</body></html>
+""", height=(height or 200) + 60, scrolling=False)
 
-# =====================================
-# MODE SELECTOR
-# =====================================
+# ══════════════════════════════════════════
+# LIQUID GENERATE BUTTON COMPONENT
+# ══════════════════════════════════════════
+def liquid_generate_button(label="→ GENERATE"):
+    clicked = components.html(f"""
+<!DOCTYPE html><html><head>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@700&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+body {{ background:transparent; display:flex; align-items:center; justify-content:center; height:60px; }}
+.btn {{
+    width:100%; height:52px; background:none; border:none; cursor:pointer;
+    position:relative; overflow:hidden; outline:none;
+}}
+.btn-bg {{
+    position:absolute; inset:0;
+    background: linear-gradient(135deg, {T["accent"]} 0%, {T["accent2"]} 40%, {T["purple"]} 80%, {T["accent"]} 120%);
+    background-size:300% 300%;
+    animation: liquidFlow 3s ease infinite;
+    transition: filter 0.2s;
+}}
+.btn:hover .btn-bg {{ filter:brightness(1.15); }}
+.btn:active .btn-bg {{ filter:brightness(0.9); }}
+@keyframes liquidFlow {{
+    0%  {{ background-position: 0% 50%; }}
+    50% {{ background-position: 100% 50%; }}
+    100%{{ background-position: 0% 50%; }}
+}}
+.btn-text {{
+    position:relative; z-index:2;
+    font-family:'Space Mono',monospace;
+    font-size:11px; font-weight:700;
+    letter-spacing:4px; text-transform:uppercase;
+    color:#fff; pointer-events:none;
+}}
+.ripple {{
+    position:absolute; border-radius:50%;
+    background:rgba(255,255,255,0.35);
+    transform:scale(0);
+    animation: rippleAnim 0.7s linear forwards;
+    pointer-events:none;
+}}
+@keyframes rippleAnim {{
+    to {{ transform:scale(4); opacity:0; }}
+}}
+</style>
+</head><body>
+<button class="btn" id="genBtn">
+    <div class="btn-bg"></div>
+    <span class="btn-text">{label}</span>
+</button>
+<script>
+const btn = document.getElementById('genBtn');
+btn.addEventListener('click', e => {{
+    // Ripple
+    const r = document.createElement('span');
+    r.className = 'ripple';
+    const rect = btn.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height);
+    r.style.cssText = `width:${{size}}px;height:${{size}}px;left:${{e.clientX-rect.left-size/2}}px;top:${{e.clientY-rect.top-size/2}}px`;
+    btn.appendChild(r);
+    setTimeout(()=>r.remove(), 700);
 
-st.markdown("<div style='padding: 20px 60px 0;'>", unsafe_allow_html=True)
+    // Particle explosion — communicate to parent
+    window.parent.postMessage({{type:'GENERATE_CLICKED', x: e.clientX, y: e.clientY}}, '*');
+    setTimeout(()=> window.parent.postMessage({{type:'STREAMLIT_RERUN'}}, '*'), 100);
+}});
+</script>
+</body></html>
+""", height=60, scrolling=False)
 
-mode = st.radio(
-    "",
-    ["Full Content Pack", "Hook Ideas", "Content Series", "Carousel Post", "YouTube Script", "X/Twitter Thread", "Repurpose Content"],
-    horizontal=True,
-    label_visibility="collapsed"
-)
+# ══════════════════════════════════════════
+# SCORE BENTO COMPONENT
+# ══════════════════════════════════════════
+def score_bento(scores):
+    items = [
+        ("Viral Potential", "viral",      T["accent"]),
+        ("Hook Strength",   "hook",       T["purple"]),
+        ("Engagement",      "engagement", T["blue"]),
+        ("Shareability",    "share",      T["green"]),
+        ("Retention",       "retention",  T["yellow"]),
+        ("Reach Rating",    "reach",      T["orange"]),
+    ]
+    cards_html = ""
+    for label, key, color in items:
+        val, _ = scores[key]
+        cards_html += f"""
+<div class="score-card" style="--accent:{color};" onmousemove="tilt(this,event)" onmouseleave="resetTilt(this)">
+    <div class="card-glow"></div>
+    <div class="score-label">{label}</div>
+    <div class="score-value" data-target="{val}">0</div>
+    <div class="score-bar"><div class="score-fill" data-width="{val}"></div></div>
+</div>"""
 
-st.markdown("</div>", unsafe_allow_html=True)
+    components.html(f"""
+<!DOCTYPE html><html><head>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+body {{ background:transparent; font-family:'Space Mono',monospace; padding:4px 2px; }}
+.grid {{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }}
+.score-card {{
+    background: {T["glass"]};
+    backdrop-filter:blur(20px);
+    border:1px solid {T["glassborder"]};
+    border-top: 2px solid var(--accent);
+    padding:14px; position:relative; overflow:hidden;
+    transition: transform 0.2s, box-shadow 0.2s;
+    cursor:default;
+}}
+.card-glow {{
+    position:absolute; inset:0;
+    background: radial-gradient(circle at 50% 0%, var(--accent)15 0%, transparent 70%);
+    opacity:0; transition:opacity 0.3s; pointer-events:none;
+}}
+.score-card:hover .card-glow {{ opacity:1; }}
+.score-card:hover {{
+    box-shadow: 0 0 20px var(--accent)20, 0 4px 20px rgba(0,0,0,0.4);
+}}
+.score-label {{
+    font-size:7px; letter-spacing:2px;
+    text-transform:uppercase; color:{T["text3"]};
+    margin-bottom:6px;
+}}
+.score-value {{
+    font-size:28px; font-weight:700;
+    color:var(--accent); line-height:1; margin-bottom:8px;
+}}
+.score-bar {{ height:2px; background:{T["rule2"]}; overflow:hidden; }}
+.score-fill {{ height:100%; background:var(--accent); width:0%; transition:width 1.4s cubic-bezier(0.4,0,0.2,1); }}
+</style>
+</head><body>
+<div class="grid">{cards_html}</div>
+<script>
+// Count-up animation
+document.querySelectorAll('.score-value').forEach(el => {{
+    const target = parseInt(el.dataset.target);
+    let cur = 0;
+    const step = Math.ceil(target / 50);
+    const timer = setInterval(() => {{
+        cur = Math.min(cur + step, target);
+        el.textContent = cur;
+        if (cur >= target) clearInterval(timer);
+    }}, 25);
+}});
+// Fill bars
+setTimeout(() => {{
+    document.querySelectorAll('.score-fill').forEach(el => {{
+        el.style.width = el.dataset.width + '%';
+    }});
+}}, 100);
+// 3D tilt
+function tilt(card, e) {{
+    const r = card.getBoundingClientRect();
+    const rx = ((e.clientY - r.top - r.height/2) / r.height) * -8;
+    const ry = ((e.clientX - r.left - r.width/2) / r.width) * 8;
+    card.style.transform = `perspective(400px) rotateX(${{rx}}deg) rotateY(${{ry}}deg) translateY(-2px)`;
+}}
+function resetTilt(card) {{
+    card.style.transform = '';
+}}
+</script>
+</body></html>
+""", height=220, scrolling=False)
 
-# =====================================
-# MAIN LAYOUT
-# =====================================
+# ══════════════════════════════════════════
+# RADAR CHART COMPONENT
+# ══════════════════════════════════════════
+def radar_component(scores):
+    vals = [scores[k][0] for k in ['viral','hook','engagement','share','retention','reach']]
+    labels = ['Viral','Hook','Engage','Share','Retain','Reach']
+    components.html(f"""
+<!DOCTYPE html><html><head>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+body {{ background:transparent; display:flex; align-items:center; justify-content:center; }}
+canvas {{ max-width:220px; max-height:220px; }}
+</style>
+</head><body>
+<canvas id="rc"></canvas>
+<script>
+new Chart(document.getElementById('rc'), {{
+    type:'radar',
+    data:{{
+        labels:{labels},
+        datasets:[{{
+            data:{vals},
+            backgroundColor:'rgba(255,75,43,0.1)',
+            borderColor:'{T["accent"]}',
+            borderWidth:1.5,
+            pointBackgroundColor:'{T["accent"]}',
+            pointRadius:4,
+            pointHoverRadius:6
+        }}]
+    }},
+    options:{{
+        responsive:true,
+        scales:{{
+            r:{{
+                min:0, max:100,
+                ticks:{{ display:false }},
+                grid:{{ color:'rgba(255,75,43,0.08)' }},
+                angleLines:{{ color:'rgba(255,75,43,0.08)' }},
+                pointLabels:{{
+                    color:'{T["text3"]}',
+                    font:{{ family:'Space Mono', size:9 }}
+                }}
+            }}
+        }},
+        plugins:{{ legend:{{ display:false }} }},
+        animation:{{ duration:1200, easing:'easeOutQuart' }}
+    }}
+}});
+</script>
+</body></html>
+""", height=240, scrolling=False)
 
-st.markdown("<div style='padding: 32px 60px;'>", unsafe_allow_html=True)
+# ══════════════════════════════════════════
+# HASHTAG TAG COMPONENT
+# ══════════════════════════════════════════
+def hashtag_component(hv, mv, nv):
+    def tags_html(tags, color):
+        return "".join([f'<span class="tag" style="--c:{color};" onclick="copyTag(this)">{t}</span>' for t in tags])
 
-col_in, col_out = st.columns([1, 1.9], gap="large")
+    components.html(f"""
+<!DOCTYPE html><html><head>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Space+Grotesk:wght@400&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+body {{ background:transparent; font-family:'Space Grotesk',sans-serif; padding:4px 2px; }}
+.group {{ margin-bottom:16px; }}
+.group-label {{
+    font-family:'Space Mono',monospace; font-size:7px;
+    letter-spacing:2px; text-transform:uppercase;
+    color:{T["text3"]}; margin-bottom:8px;
+    display:flex; align-items:center; justify-content:space-between;
+}}
+.copy-all {{
+    background:transparent; border:1px solid {T["rule2"]};
+    color:{T["text4"]}; font-family:'Space Mono',monospace;
+    font-size:7px; letter-spacing:1px; padding:2px 7px;
+    cursor:pointer; transition:all 0.15s; text-transform:uppercase;
+}}
+.copy-all:hover {{ border-color:{T["accent"]}; color:{T["accent"]}; }}
+.tags {{ display:flex; flex-wrap:wrap; gap:5px; }}
+.tag {{
+    background:{T["bg3"]}; border:1px solid {T["rule2"]};
+    color:{T["text2"]}; font-family:'Space Mono',monospace;
+    font-size:10px; padding:4px 9px; cursor:pointer;
+    transition:all 0.2s; display:inline-block;
+    position:relative; overflow:hidden;
+}}
+.tag::before {{
+    content:''; position:absolute; inset:0;
+    background:var(--c); opacity:0; transition:opacity 0.2s;
+}}
+.tag:hover::before {{ opacity:0.1; }}
+.tag:hover {{ border-color:var(--c); color:var(--c); transform:translateY(-1px); }}
+.copied-toast {{
+    position:fixed; bottom:10px; right:10px;
+    background:{T["accent"]}; color:#fff;
+    font-family:'Space Mono',monospace; font-size:9px;
+    letter-spacing:2px; padding:6px 12px;
+    opacity:0; transition:opacity 0.2s; pointer-events:none;
+}}
+.copied-toast.show {{ opacity:1; }}
+</style>
+</head><body>
+<div class="group">
+    <div class="group-label">
+        <span>High Volume — 1M+ posts ({len(hv)} tags)</span>
+        <button class="copy-all" onclick="copyGroup('hv')">COPY ALL</button>
+    </div>
+    <div class="tags" id="hv">{tags_html(hv, T["accent"])}</div>
+</div>
+<div class="group">
+    <div class="group-label">
+        <span>Medium Volume — 100K–1M ({len(mv)} tags)</span>
+        <button class="copy-all" onclick="copyGroup('mv')">COPY ALL</button>
+    </div>
+    <div class="tags" id="mv">{tags_html(mv, T["blue"])}</div>
+</div>
+<div class="group">
+    <div class="group-label">
+        <span>Niche Community — Under 100K ({len(nv)} tags)</span>
+        <button class="copy-all" onclick="copyGroup('nv')">COPY ALL</button>
+    </div>
+    <div class="tags" id="nv">{tags_html(nv, T["green"])}</div>
+</div>
+<div class="copied-toast" id="toast">COPIED</div>
+<script>
+function showToast() {{
+    const t = document.getElementById('toast');
+    t.classList.add('show');
+    setTimeout(()=>t.classList.remove('show'), 1500);
+}}
+function copyTag(el) {{
+    navigator.clipboard.writeText(el.textContent);
+    showToast();
+}}
+function copyGroup(id) {{
+    const tags = Array.from(document.getElementById(id).querySelectorAll('.tag')).map(t=>t.textContent).join(' ');
+    navigator.clipboard.writeText(tags);
+    showToast();
+}}
+</script>
+</body></html>
+""", height=280, scrolling=False)
 
-# ── INPUT PANEL ──
-with col_in:
-    topic = st.text_input(
-        "Topic",
-        placeholder="e.g. Super Villain Arc, Morning Routine...",
-        key="topic_input"
+# ══════════════════════════════════════════
+# HELPERS
+# ══════════════════════════════════════════
+def section_label(text):
+    st.markdown(f"""
+<div style="font-family:'Space Mono',monospace;font-size:8px;letter-spacing:3px;
+text-transform:uppercase;color:{T['text4']};margin-bottom:12px;
+display:flex;align-items:center;gap:8px;">
+{text}
+<span style="flex:1;height:1px;background:{T['rule']};display:inline-block;"></span>
+</div>""", unsafe_allow_html=True)
+
+def gradient_divider():
+    st.markdown(f"""<div style="height:1px;background:linear-gradient(90deg,{T['accent']},{T['purple']},transparent);
+opacity:0.35;margin:24px 0;"></div>""", unsafe_allow_html=True)
+
+def gen_scores():
+    return {
+        "viral":      (random.randint(82,97), T["accent"]),
+        "hook":       (random.randint(80,96), T["purple"]),
+        "engagement": (random.randint(83,95), T["blue"]),
+        "share":      (random.randint(81,94), T["green"]),
+        "retention":  (random.randint(82,95), T["yellow"]),
+        "reach":      (random.randint(80,93), T["orange"]),
+    }
+
+POSTING_TIMES = {
+    "Instagram Reels": [("6–8 AM","Morning",False),("12–2 PM","Lunch",False),("7–9 PM","Evening",True),("10 PM","Night",False)],
+    "TikTok":          [("7–9 AM","Morning",False),("3–5 PM","Afternoon",False),("7–9 PM","Prime",True),("11 PM","Late",False)],
+    "YouTube Shorts":  [("8–10 AM","Morning",False),("2–4 PM","Afternoon",True),("6–8 PM","Evening",False)],
+}
+
+SATURATION = {
+    "Dark Aesthetic / Motivation": "HIGH — competitive. Use micro-angles.",
+    "Gaming": "VERY HIGH — niche down to specific game/genre.",
+    "Tech & AI": "MEDIUM-HIGH — fast growing. Early mover advantage.",
+    "Finance & Investing": "MEDIUM — evergreen. Authority content wins.",
+    "Fitness & Gym": "VERY HIGH — specific transformation angles win.",
+    "Horror & Thriller": "MEDIUM — underserved on Reels. Opportunity.",
+    "Luxury & Premium": "LOW-MEDIUM — aspirational, high engagement.",
+}
+
+def parse_captions(text):
+    s = re.search(r'SHORT[^:]*:\s*([\s\S]*?)(?=MEDIUM[^:]*:|$)', text, re.I)
+    m = re.search(r'MEDIUM[^:]*:\s*([\s\S]*?)(?=LONG[^:]*:|$)', text, re.I)
+    l = re.search(r'LONG[^:]*:\s*([\s\S]*?)$', text, re.I)
+    return (
+        s.group(1).strip() if s else text[:200],
+        m.group(1).strip() if m else "",
+        l.group(1).strip() if l else ""
     )
 
+def parse_hashtags(text):
+    hv = re.search(r'HIGH VOLUME[^:]*:\s*([\s\S]*?)(?=MEDIUM VOLUME|$)', text, re.I)
+    mv = re.search(r'MEDIUM VOLUME[^:]*:\s*([\s\S]*?)(?=NICHE|$)', text, re.I)
+    nv = re.search(r'NICHE[^:]*:\s*([\s\S]*?)$', text, re.I)
+    def tags(raw): return re.findall(r'#\w+', raw) if raw else []
+    return (tags(hv.group(1) if hv else ""), tags(mv.group(1) if mv else ""), tags(nv.group(1) if nv else ""))
+
+def format_script(text):
+    hook  = re.search(r'HOOK[^:]*:\s*([\s\S]*?)(?=BODY|MIDDLE|$)', text, re.I)
+    body  = re.search(r'(?:BODY|MIDDLE)[^:]*:\s*([\s\S]*?)(?=CTA|$)', text, re.I)
+    cta   = re.search(r'CTA[^:]*:\s*([\s\S]*?)(?=SUGGESTED AUDIO|AUDIO|$)', text, re.I)
+    audio = re.search(r'(?:SUGGESTED AUDIO|AUDIO)[^:]*:\s*([\s\S]*?)$', text, re.I)
+    parts = []
+    if hook:  parts.append(f"🔴 HOOK (0–3s)\n{hook.group(1).strip()}")
+    if body:  parts.append(f"⚪ BODY (3–25s)\n{body.group(1).strip()}")
+    if cta:   parts.append(f"🟢 CTA (25–30s)\n{cta.group(1).strip()}")
+    if audio: parts.append(f"🟣 AUDIO VIBE\n{audio.group(1).strip()}")
+    return "\n\n".join(parts) if parts else text
+
+# ══════════════════════════════════════════
+# GLOBAL CSS
+# ══════════════════════════════════════════
+st.markdown(f"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&family=Fraunces:ital,opsz,wght@1,9..144,900&display=swap');
+*, *::before, *::after {{ box-sizing:border-box; }}
+html, body,
+[data-testid="stAppViewContainer"],
+[data-testid="stAppViewContainer"] > .main {{
+    background:{T["bg"]} !important;
+    color:{T["text"]} !important;
+    font-family:'Space Grotesk',sans-serif !important;
+}}
+[data-testid="stHeader"] {{ display:none !important; }}
+.block-container {{ padding:0 !important; max-width:100% !important; }}
+[data-testid="stSidebar"] {{
+    background:{T["bg2"]} !important;
+    border-right:1px solid {T["rule"]} !important;
+}}
+[data-testid="stSidebar"] * {{ color:{T["text"]} !important; }}
+.stTextInput>div>div>input,.stTextArea>div>div>textarea {{
+    background:{T["bg3"]} !important; border:1px solid {T["rule2"]} !important;
+    border-radius:0 !important; color:{T["text"]} !important;
+    font-family:'Space Grotesk',sans-serif !important; font-size:13px !important;
+    padding:11px 13px !important;
+    transition:border-color 0.2s, box-shadow 0.2s !important;
+    caret-color:{T["accent"]} !important;
+}}
+.stTextInput>div>div>input:focus,.stTextArea>div>div>textarea:focus {{
+    border-color:{T["accent"]} !important;
+    box-shadow:0 0 0 2px {T["accent"]}18 !important;
+}}
+.stTextInput>div>div>input::placeholder,.stTextArea>div>div>textarea::placeholder {{
+    color:{T["text4"]} !important;
+}}
+[data-baseweb="select"]>div {{
+    background:{T["bg3"]} !important; border:1px solid {T["rule2"]} !important;
+    border-radius:0 !important; color:{T["text"]} !important;
+    font-family:'Space Grotesk',sans-serif !important; font-size:13px !important;
+}}
+[data-baseweb="popover"] ul {{
+    background:{T["bg3"]} !important; border:1px solid {T["rule2"]} !important;
+}}
+[data-baseweb="option"] {{
+    background:{T["bg3"]} !important; color:{T["text"]} !important;
+    font-family:'Space Grotesk',sans-serif !important; font-size:12px !important;
+}}
+[data-baseweb="option"]:hover {{ background:{T["bg4"]} !important; }}
+label,.stSelectbox label,.stTextInput label,.stTextArea label,.stRadio label {{
+    color:{T["text3"]} !important; font-family:'Space Mono',monospace !important;
+    font-size:8px !important; letter-spacing:2px !important; text-transform:uppercase !important;
+}}
+.stRadio>div {{ gap:3px !important; flex-direction:column !important; }}
+.stRadio>div>label {{
+    background:{T["bg3"]} !important; border:1px solid {T["rule2"]} !important;
+    padding:9px 14px !important; transition:all 0.15s !important;
+    color:{T["text3"]} !important; font-size:11px !important;
+    letter-spacing:1px !important; border-radius:0 !important; margin:0 !important;
+}}
+.stRadio>div>label:hover {{ border-color:{T["accent"]} !important; color:{T["accent"]} !important; }}
+.stButton>button {{
+    background:transparent !important; color:{T["text3"]} !important;
+    border:1px solid {T["rule2"]} !important; border-radius:0 !important;
+    font-family:'Space Mono',monospace !important; font-size:9px !important;
+    letter-spacing:2px !important; text-transform:uppercase !important;
+    padding:10px 18px !important; transition:all 0.2s !important;
+}}
+.stButton>button:hover {{
+    border-color:{T["accent"]} !important; color:{T["accent"]} !important;
+    box-shadow:0 0 12px {T["accent"]}20 !important;
+}}
+.stDownloadButton>button {{
+    background:transparent !important; color:{T["text3"]} !important;
+    border:1px solid {T["rule2"]} !important; border-radius:0 !important;
+    font-family:'Space Mono',monospace !important; font-size:8px !important;
+    letter-spacing:2px !important; text-transform:uppercase !important;
+    padding:8px 14px !important; width:auto !important; transition:all 0.2s !important;
+}}
+.stDownloadButton>button:hover {{
+    border-color:{T["accent"]} !important; color:{T["accent"]} !important;
+}}
+.stTabs [data-baseweb="tab-list"] {{
+    background:transparent !important; border-bottom:1px solid {T["rule"]} !important;
+    gap:0 !important; padding:0 !important;
+}}
+.stTabs [data-baseweb="tab"] {{
+    background:transparent !important; color:{T["text3"]} !important;
+    font-family:'Space Mono',monospace !important; font-size:8px !important;
+    letter-spacing:2px !important; text-transform:uppercase !important;
+    padding:10px 18px !important; border-radius:0 !important;
+    border-bottom:2px solid transparent !important; transition:all 0.2s !important;
+}}
+.stTabs [aria-selected="true"] {{
+    color:{T["accent"]} !important; border-bottom-color:{T["accent"]} !important;
+    background:transparent !important;
+}}
+.stTabs [data-baseweb="tab-panel"] {{ padding:20px 0 0 !important; background:transparent !important; }}
+[data-testid="stMetric"] {{
+    background:{T["bg2"]} !important; border:1px solid {T["rule"]} !important;
+    padding:14px !important; border-radius:0 !important;
+}}
+[data-testid="stMetricLabel"]>div {{
+    font-family:'Space Mono',monospace !important; font-size:8px !important;
+    letter-spacing:2px !important; text-transform:uppercase !important;
+    color:{T["text4"]} !important;
+}}
+[data-testid="stMetricValue"]>div {{
+    font-family:'Space Mono',monospace !important; color:{T["text"]} !important; font-size:24px !important;
+}}
+.streamlit-expanderHeader {{
+    background:{T["bg2"]} !important; border:1px solid {T["rule"]} !important;
+    border-radius:0 !important; color:{T["text3"]} !important;
+    font-family:'Space Mono',monospace !important; font-size:9px !important;
+    letter-spacing:2px !important; text-transform:uppercase !important;
+}}
+.streamlit-expanderContent {{
+    background:{T["bg2"]} !important; border:1px solid {T["rule"]} !important;
+    border-top:none !important; padding:16px !important;
+}}
+hr {{ border-color:{T["rule"]} !important; margin:20px 0 !important; }}
+::-webkit-scrollbar {{ width:3px; height:3px; }}
+::-webkit-scrollbar-track {{ background:{T["bg"]}; }}
+::-webkit-scrollbar-thumb {{ background:{T["rule2"]}; }}
+::-webkit-scrollbar-thumb:hover {{ background:{T["accent"]}; }}
+</style>
+""", unsafe_allow_html=True)
+
+# ══════════════════════════════════════════
+# INJECT PREMIUM EFFECTS (background layer)
+# ══════════════════════════════════════════
+inject_premium_effects()
+
+# ══════════════════════════════════════════
+# TOPBAR
+# ══════════════════════════════════════════
+theme_icon = "🌙" if IS_DARK else "🌕"
+st.markdown(f"""
+<div style="display:flex;align-items:center;justify-content:space-between;
+padding:0 40px;height:52px;background:{T["bg2"]}ee;
+border-bottom:1px solid {T["rule"]};backdrop-filter:blur(20px);">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <div style="width:26px;height:26px;background:{T["accent"]};
+    display:flex;align-items:center;justify-content:center;font-size:13px;
+    box-shadow:0 0 16px {T["accent"]}60;">🎬</div>
+    <div style="font-family:'Space Mono',monospace;font-size:13px;
+    font-weight:700;color:{T["text"]};letter-spacing:1px;">
+        Reel<span style="color:{T["accent"]};">Mind</span> AI</div>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div style="display:flex;align-items:center;gap:6px;
+    font-family:'Space Mono',monospace;font-size:8px;color:{T["green"]};">
+        <div style="width:5px;height:5px;background:{T["green"]};border-radius:50%;
+        animation:pulse 2s infinite;"></div>GEMINI LIVE</div>
+    <div style="font-family:'Space Mono',monospace;font-size:8px;
+    color:{T["text4"]};background:{T["bg3"]};border:1px solid {T["rule2"]};padding:3px 8px;">v3.0</div>
+  </div>
+</div>
+<style>@keyframes pulse{{0%,100%{{opacity:1}}50%{{opacity:0.3}}}}</style>
+""", unsafe_allow_html=True)
+
+# ══════════════════════════════════════════
+# HERO
+# ══════════════════════════════════════════
+st.markdown(f"""
+<div style="padding:40px 40px 28px;border-bottom:1px solid {T["rule"]};position:relative;overflow:hidden;">
+  <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:4px;
+  text-transform:uppercase;color:{T["accent"]};margin-bottom:10px;
+  display:flex;align-items:center;gap:10px;">
+    <span style="width:18px;height:1px;background:{T["accent"]};display:inline-block;"></span>
+    AI Content Engine — Studio Grade
+  </div>
+  <div style="font-family:'Fraunces',serif;font-size:58px;font-weight:900;font-style:italic;
+  line-height:0.92;letter-spacing:-2px;color:{T["text"]};margin-bottom:14px;">
+    Reel<span style="color:{T["accent"]};">Mind</span>
+    <span style="color:{T["text4"]};">AI</span>
+  </div>
+  <div style="font-size:13px;color:{T["text3"]};max-width:420px;line-height:1.6;margin-bottom:24px;">
+    Generate scroll-stopping captions, hashtag stacks, viral scripts,
+    and thumbnail prompts — powered by Gemini 2.5 Flash.
+  </div>
+  <div style="display:flex;gap:32px;flex-wrap:wrap;">
+    {"".join([f'<div style="display:flex;flex-direction:column;gap:2px;"><div style="font-family:Space Mono,monospace;font-size:20px;font-weight:700;color:{T["text"]};">{n}</div><div style="font-family:Space Mono,monospace;font-size:7px;letter-spacing:2px;text-transform:uppercase;color:{T["text4"]};">{l}</div></div>' for n,l in [("4","Outputs/run"),("30","Hashtags"),("3","Captions"),("16","Niches")]])}
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+# ══════════════════════════════════════════
+# SIDEBAR
+# ══════════════════════════════════════════
+with st.sidebar:
+    st.markdown(f'<div style="font-family:Space Mono,monospace;font-size:8px;letter-spacing:3px;text-transform:uppercase;color:{T["text4"]};padding:16px 16px 10px;border-bottom:1px solid {T["rule"]};">⚡ Content Engine</div>', unsafe_allow_html=True)
+
+    col_t1, col_t2 = st.columns([3,1])
+    with col_t2:
+        if st.button(theme_icon):
+            st.session_state.theme = "light" if IS_DARK else "dark"
+            st.rerun()
+
+    st.markdown("---")
+    mode = st.radio("Mode", [
+        "⚡ Full Content Pack","🎯 Hook Ideas Only",
+        "📅 Content Series","🎠 Carousel Post",
+        "🧵 X/Twitter Thread","🔄 Content Repurposer"
+    ], label_visibility="collapsed")
+
+    st.markdown("---")
+    topic = st.text_input("Topic", placeholder="e.g. Villain arc, AI Tools, Gym motivation...")
     niche = st.selectbox("Niche", [
-        "Dark Aesthetic / Motivation",
-        "Gaming", "Anime & Manga", "Fitness & Gym", "Tech & AI",
-        "Finance & Investing", "Horror & Thriller", "Fashion & Lifestyle",
-        "Education", "Movie Industry", "Music & Artists",
-        "Business & Entrepreneurship", "Luxury & Wealth", "Cars & Automotive",
-        "Travel & Adventure", "Food & Cooking"
+        "Dark Aesthetic / Motivation","Gaming","Anime & Manga",
+        "Fitness & Gym","Tech & AI","Finance & Investing",
+        "Horror & Thriller","Fashion & Lifestyle","Education",
+        "Movie Industry","Music & Artists","Business & Entrepreneurship",
+        "Luxury & Premium","Cars & Motorsport","Travel & Adventure","Food & Cooking"
     ])
-
-    platform = st.selectbox("Platform", [
-        "Instagram Reels", "TikTok", "YouTube Shorts"
-    ])
-
+    platform = st.selectbox("Platform", ["Instagram Reels","TikTok","YouTube Shorts"])
     tone = st.selectbox("Tone", [
-        "Viral & Bold", "Dark & Cinematic", "Motivational & Intense",
-        "Minimal & Clean", "Edgy & Controversial", "Informative & Professional"
+        "Viral & Bold","Dark & Cinematic","Motivational & Intense",
+        "Minimal & Clean","Edgy & Controversial","Informative & Professional"
     ])
 
-    if mode == "Content Series":
-        num_posts = st.selectbox("Posts in Series", [3, 5, 7, 10])
-    if mode == "Carousel Post":
-        num_slides = st.selectbox("Number of Slides", [5, 7, 10])
-    if mode == "YouTube Script":
-        yt_duration = st.selectbox("Video Duration", [3, 5, 8, 10, 15])
-    if mode == "X/Twitter Thread":
-        tweet_count = st.selectbox("Number of Tweets", [5, 7, 10, 12])
-    if mode == "Repurpose Content":
-        original_content = st.text_area("Paste Your Original Content", height=120, placeholder="Paste your existing caption, script, or post here...")
-        original_platform = st.selectbox("Original Platform", ["Instagram Reels", "TikTok", "YouTube Shorts", "X/Twitter", "LinkedIn"])
-        target_platform = st.selectbox("Repurpose To", ["TikTok", "Instagram Reels", "YouTube Shorts", "X/Twitter", "LinkedIn"])
+    num_posts = 5
+    if "Series" in mode:
+        num_posts = st.selectbox("Posts in Series", [3,5,7])
 
-    generate_btn = st.button("→ GENERATE" if mode == "Full Content Pack"
-        else "→ GET HOOKS"   if mode == "Hook Ideas"
-        else "→ BUILD SERIES" if mode == "Content Series"
-        else "→ CREATE CAROUSEL" if mode == "Carousel Post"
-        else "→ WRITE SCRIPT" if mode == "YouTube Script"
-        else "→ WRITE THREAD" if mode == "X/Twitter Thread"
-        else "→ REPURPOSE")
+    original_content = ""
+    target_platform = "TikTok"
+    if "Repurposer" in mode:
+        original_content = st.text_area("Paste original content", height=80)
+        target_platform = st.selectbox("Repurpose for", ["TikTok","YouTube Shorts","X/Twitter","LinkedIn"])
+
+    st.markdown("---")
+
+    # Liquid generate button via component
+    liquid_generate_button("→ GENERATE")
+    # Fallback standard button
+    generate_btn = st.button("GENERATE", key="gen_fallback")
 
     with st.expander("QUICK TIPS"):
-        st.markdown("""
-<div style='font-family: Space Grotesk, sans-serif; font-size: 12px; color: #6b6882; line-height: 1.8;'>
-→ Specific topics outperform generic ones<br>
-→ <strong style='color: #9994bb;'>"Villain arc workout" &gt; "gym"</strong><br>
-→ Match tone to your existing content style<br>
-→ Use Hook Ideas to A/B test your openings<br>
-→ Build a Series for consistent daily posting
-</div>""", unsafe_allow_html=True)
+        st.markdown(f'<div style="font-family:Space Grotesk,sans-serif;font-size:12px;color:{T["text3"]};line-height:1.8;">→ Specific topics outperform generic<br>→ <strong style="color:{T["text2"]};">"Villain arc workout" > "gym"</strong><br>→ Match tone to your content style<br>→ Use Hook mode to A/B test openings</div>', unsafe_allow_html=True)
 
-    # Generation history
     if st.session_state.history:
-        st.markdown("<div style='margin-top: 24px;'>", unsafe_allow_html=True)
-        st.markdown('<div style="font-family: Space Mono, monospace; font-size: 8px; letter-spacing: 3px; color: #2a2840; text-transform: uppercase; margin-bottom: 12px;">Recent</div>', unsafe_allow_html=True)
-        for h in st.session_state.history[-4:][::-1]:
-            st.markdown(f"""
-<div class="history-item">
-  <div class="history-topic">{h['topic']}</div>
-  <div class="history-meta">{h['niche']} · {h['platform']}</div>
-</div>""", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("---")
+        st.markdown(f'<div style="font-family:Space Mono,monospace;font-size:8px;letter-spacing:2px;text-transform:uppercase;color:{T["text4"]};margin-bottom:8px;">Recent</div>', unsafe_allow_html=True)
+        for h in st.session_state.history[-4:]:
+            st.markdown(f'<div style="background:{T["bg3"]};border:1px solid {T["rule"]};padding:8px 10px;margin-bottom:3px;"><div style="font-size:12px;font-weight:500;color:{T["text"]};">{h["topic"][:24]}</div><div style="font-family:Space Mono,monospace;font-size:7px;color:{T["text4"]};">{h["niche"][:22]} · {h["time"]}</div></div>', unsafe_allow_html=True)
 
-
-# ── OUTPUT PANEL ──
-with col_out:
-
-    if generate_btn:
-        if not topic.strip() and mode != "Repurpose Content":
-            st.warning("Please enter a topic first.")
-        elif mode == "Repurpose Content" and not original_content.strip():
-            st.warning("Please paste your original content.")
-        else:
-            # Add to history
-            if topic.strip():
-                st.session_state.history.append({
-                    "topic": topic, "niche": niche, "platform": platform
-                })
-                st.session_state.gen_count += 1
-
-            # ── FULL CONTENT PACK ──
-            if mode == "Full Content Pack":
-                progress_placeholder = st.empty()
-
-                steps = [
-                    "Analyzing topic...",
-                    "Building captions...",
-                    "Generating hashtags...",
-                    "Creating script...",
-                    "Designing thumbnail...",
-                    "Computing viral scores..."
-                ]
-
-                def show_progress(done_steps, active_idx):
-                    html = '<div class="gen-progress">'
-                    for i, s in enumerate(steps):
-                        cls = "done" if i < done_steps else ("active" if i == active_idx else "")
-                        icon = "✓ " if i < done_steps else ""
-                        html += f'<div class="gen-step {cls}"><div class="gen-step-dot"></div>{icon}{s.upper()}</div>'
-                    html += '</div>'
-                    progress_placeholder.markdown(html, unsafe_allow_html=True)
-
-                show_progress(0, 0)
-                time.sleep(0.4)
-                show_progress(1, 1)
-
-                result = generate_all_content(topic, niche, platform, tone)
-
-                show_progress(4, 4)
-                time.sleep(0.3)
-
-                scores = generate_scores(topic, niche, platform, tone)
-                st.session_state.last_result = result
-                st.session_state.last_scores = scores
-                st.session_state.last_meta = {"topic": topic, "niche": niche, "platform": platform, "tone": tone}
-
-                show_progress(6, 5)
-                time.sleep(0.3)
-                progress_placeholder.empty()
-
-                if "ERROR" in result.get("raw", "") or not result["captions"]:
-                    st.error(result.get("raw", "Generation failed. Try again."))
-                else:
-                    st.markdown('<div style="font-family: Space Mono, monospace; font-size: 9px; letter-spacing: 3px; color: #06ffa5; margin-bottom: 20px;">✓ CONTENT READY</div>', unsafe_allow_html=True)
-
-                    # ── VIRAL SCORES ──
-                    if scores:
-                        st.markdown(f"""
-<div class="viral-verdict">
-  <div class="viral-verdict-label">AI Verdict</div>
-  <div class="viral-verdict-text">{scores.get('viral_verdict','')}</div>
-  <div class="viral-tip">💡 {scores.get('top_tip','')}</div>
+# ══════════════════════════════════════════
+# MAIN OUTPUT
+# ══════════════════════════════════════════
+if not generate_btn:
+    if not st.session_state.last_result:
+        st.markdown(f"""
+<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
+min-height:420px;border:1px dashed {T["rule2"]};margin:32px 40px;gap:14px;">
+  <div style="font-size:38px;filter:grayscale(1);opacity:0.15;">🎬</div>
+  <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:3px;
+  text-transform:uppercase;color:{T["text4"]};">Configure & Generate</div>
+  <div style="font-size:12px;color:{T["text4"]};font-family:'Space Mono',monospace;">
+  Your content will appear here</div>
 </div>""", unsafe_allow_html=True)
 
-                        score_colors = ["s-purple","s-cyan","s-fire","s-green","s-purple","s-cyan","s-fire","s-green"]
-                        score_keys = [
-                            ("viral_potential",   "Viral Potential"),
-                            ("hook_strength",     "Hook Strength"),
-                            ("shareability",      "Shareability"),
-                            ("engagement_rate",   "Engagement Rate"),
-                            ("retention_score",   "Retention Score"),
-                            ("trend_compatibility","Trend Match"),
-                            ("audience_match",    "Audience Match"),
-                            ("niche_saturation",  "Niche Space"),
-                        ]
+if generate_btn:
+    if not topic.strip():
+        st.warning("Please enter a topic first.")
+        st.stop()
 
-                        score_html = '<div class="score-grid">'
-                        for i, (k, lbl) in enumerate(score_keys):
-                            val = scores.get(k, 80)
-                            col_cls = score_colors[i % len(score_colors)]
-                            score_html += f"""
-<div class="score-item">
-  <span class="score-label">{lbl}</span>
-  <div class="score-bar-wrap"><div class="score-bar {col_cls}" style="width:{val}%"></div></div>
-  <span class="score-val">{val}<span>/100</span></span>
-</div>"""
-                        score_html += '</div>'
+    # ── LOADING STEPS ──
+    steps_ph = st.empty()
+    step_names = [
+        "Analyzing topic & niche...",
+        "Building caption stack...",
+        "Generating hashtag strategy...",
+        "Writing reel script...",
+        "Designing thumbnail prompt...",
+        "Calculating content scores...",
+    ]
 
-                        best_time = scores.get("best_post_time", "—")
-                        score_html += f'<div class="post-time">⏰ Best Post Time: {best_time}</div>'
+    def render_steps(done):
+        rows = ""
+        for i, name in enumerate(step_names):
+            if i < done:
+                col, icon = T["green"], "✓"
+            elif i == done:
+                col, icon = T["accent"], "◌"
+            else:
+                col, icon = T["text4"], str(i+1)
+            rows += f'<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid {T["rule"]};font-family:Space Mono,monospace;font-size:10px;letter-spacing:1px;color:{col};"><span style="width:18px;text-align:center;">{icon}</span><span>{name}</span></div>'
+        return f'<div style="background:{T["bg2"]};border:1px solid {T["rule"]};padding:24px;margin:20px 40px;">{rows}</div>'
 
-                        st.markdown(score_html, unsafe_allow_html=True)
+    for i in range(len(step_names)):
+        steps_ph.markdown(render_steps(i), unsafe_allow_html=True)
+        time.sleep(0.45)
 
-                        st.markdown('<div class="rm-divider"></div>', unsafe_allow_html=True)
+    # ── API CALL ──
+    result = None
+    raw_output = None
+    error_msg = None
 
-                    # ── TABS ──
-                    tab1, tab2, tab3, tab4 = st.tabs(["CAPTIONS", "HASHTAGS", "SCRIPT", "THUMBNAIL"])
+    try:
+        if "Full Content" in mode:
+            result = generate_full_content(topic, niche, platform, tone)
+            if "ERROR" in result.get("raw",""):
+                error_msg = result["raw"].split("||")[-1]
+        elif "Hook" in mode:
+            raw_output = generate_hooks(topic, niche)
+            if "ERROR" in (raw_output or ""): error_msg = raw_output.split("||")[-1]
+        elif "Series" in mode:
+            raw_output = generate_series(topic, niche, platform, num_posts)
+            if "ERROR" in (raw_output or ""): error_msg = raw_output.split("||")[-1]
+        elif "Carousel" in mode:
+            raw_output = generate_carousel(topic, niche, platform)
+            if "ERROR" in (raw_output or ""): error_msg = raw_output.split("||")[-1]
+        elif "Thread" in mode:
+            raw_output = generate_thread(topic, niche)
+            if "ERROR" in (raw_output or ""): error_msg = raw_output.split("||")[-1]
+        elif "Repurposer" in mode:
+            raw_output = repurpose_content(original_content, target_platform)
+            if "ERROR" in (raw_output or ""): error_msg = raw_output.split("||")[-1]
+    except Exception as e:
+        error_msg = str(e)
 
-                    with tab1:
-                        wc = len(result['captions'].split())
-                        st.markdown(f"""
-<div class="rm-glass-card rm-electric">
-  <div class="rm-card-label">Caption Stack <span class="wc-badge">{wc} words</span></div>
-  <div class="rm-card-body">{result['captions']}</div>
-</div>""", unsafe_allow_html=True)
-                        c1, c2 = st.columns(2)
-                        with c1:
-                            st.download_button("↓ DOWNLOAD", result["captions"],
-                                file_name=f"captions_{topic[:20].replace(' ','_')}.txt", mime="text/plain", key="dl_cap")
-                        with c2:
-                            st.code(result["captions"][:200] + "...", language=None)
+    steps_ph.markdown(render_steps(len(step_names)), unsafe_allow_html=True)
+    time.sleep(0.3)
+    steps_ph.empty()
 
-                    with tab2:
-                        ht_count = result['hashtags'].count('#')
-                        st.markdown(f"""
-<div class="rm-glass-card">
-  <div class="rm-card-label">Hashtag Stack — {ht_count} tags</div>
-  <div class="rm-card-body">{result['hashtags']}</div>
-</div>""", unsafe_allow_html=True)
-                        st.download_button("↓ DOWNLOAD HASHTAGS", result["hashtags"],
-                            file_name=f"hashtags_{topic[:20].replace(' ','_')}.txt", mime="text/plain", key="dl_ht")
+    if error_msg:
+        st.error(f"Generation failed: {error_msg}")
+        st.stop()
 
-                    with tab3:
-                        st.markdown(f"""
-<div class="rm-glass-card">
-  <div class="rm-card-label">Reel Script — 30 Seconds</div>
-  <div class="rm-card-body">{result['script']}</div>
-</div>""", unsafe_allow_html=True)
-                        st.download_button("↓ DOWNLOAD SCRIPT", result["script"],
-                            file_name=f"script_{topic[:20].replace(' ','_')}.txt", mime="text/plain", key="dl_sc")
+    if result:
+        st.session_state.last_result = result
+    scores = gen_scores()
+    st.session_state.last_scores = scores
+    st.session_state.history.append({
+        "topic": topic, "niche": niche,
+        "time": datetime.datetime.now().strftime("%H:%M")
+    })
 
-                    with tab4:
-                        st.markdown(f"""
-<div class="rm-glass-card">
-  <div class="rm-card-label">Thumbnail Prompt — Multi-Platform</div>
-  <div class="rm-card-body">{result['thumbnail']}</div>
-</div>""", unsafe_allow_html=True)
-                        st.download_button("↓ DOWNLOAD PROMPT", result["thumbnail"],
-                            file_name=f"thumbnail_{topic[:20].replace(' ','_')}.txt", mime="text/plain", key="dl_th")
+    # ── SCORE BENTO ──
+    st.markdown("<div style='padding:0 40px;'>", unsafe_allow_html=True)
+    section_label("Content Score Card")
+    score_bento(scores)
+    gradient_divider()
 
-                    # Full pack
-                    st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
-                    full = f"""REELMIND AI — FULL CONTENT PACK
-Topic: {topic} | Niche: {niche} | Platform: {platform} | Tone: {tone}
-{'='*60}
+    # ── RADAR + ANALYTICS ──
+    col_r, col_a = st.columns([1,1])
+    with col_r:
+        section_label("Content Radar")
+        radar_component(scores)
 
-CAPTIONS
-{'='*60}
-{result['captions']}
+    with col_a:
+        section_label("Best Posting Times")
+        times = POSTING_TIMES.get(platform, POSTING_TIMES["Instagram Reels"])
+        t_html = "".join([
+            f'<span style="display:inline-block;background:{T["bg3"]};border:1px solid {T["green"] if best else T["rule2"]};padding:6px 11px;font-family:Space Mono,monospace;font-size:9px;color:{T["green"] if best else T["text3"]};margin:3px;{"background:" + T["green"] + "10;" if best else ""}">{t}<small style="display:block;font-size:7px;letter-spacing:1px;">{label}{"  ★" if best else ""}</small></span>'
+            for t, label, best in times
+        ])
+        st.markdown(t_html, unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+        section_label("Niche Saturation")
+        sat = SATURATION.get(niche, "MEDIUM — competitive but approachable with strong hooks.")
+        st.markdown(f'<div style="font-family:Space Mono,monospace;font-size:10px;color:{T["text2"]};line-height:1.6;">{sat}</div>', unsafe_allow_html=True)
 
-HASHTAGS
-{'='*60}
-{result['hashtags']}
+    gradient_divider()
 
-SCRIPT
-{'='*60}
-{result['script']}
+    # ══════════════════════════════════════
+    # FULL CONTENT TABS
+    # ══════════════════════════════════════
+    if "Full Content" in mode and result:
+        tab1, tab2, tab3, tab4 = st.tabs(["📝 Captions","#️⃣ Hashtags","🎬 Script","🖼️ Thumbnail"])
 
-THUMBNAIL PROMPT
-{'='*60}
-{result['thumbnail']}
+        with tab1:
+            short, med, long_cap = parse_captions(result.get("captions",""))
+            for cap_text, label, key in [(short,"Short Caption","s"),(med,"Medium Caption","m"),(long_cap,"Long Caption","l")]:
+                wc = len(cap_text.split())
+                glass_card(f"{label} — {wc} words", cap_text, T["accent"], 160)
+                st.download_button(f"↓ COPY {label.split()[0].upper()}", cap_text,
+                    file_name=f"{label.lower().replace(' ','_')}.txt", key=f"dl_{key}")
 
-AI SCORES
-{'='*60}
-{json.dumps(scores, indent=2) if scores else 'N/A'}
-"""
-                    st.download_button("↓ DOWNLOAD FULL PACK", full,
-                        file_name=f"reelmind_{topic[:20].replace(' ','_')}_full.txt", mime="text/plain", key="dl_all")
+        with tab2:
+            hv, mv, nv = parse_hashtags(result.get("hashtags",""))
+            hashtag_component(hv, mv, nv)
+            all_tags = " ".join(hv+mv+nv)
+            st.download_button("↓ DOWNLOAD ALL HASHTAGS", all_tags,
+                file_name="hashtags.txt", key="dl_ht")
 
-            # ── HOOK IDEAS ──
-            elif mode == "Hook Ideas":
-                with st.spinner(""):
-                    hooks = generate_hooks(topic, niche)
-                if hooks and "ERROR" not in hooks:
-                    st.markdown(f"""
-<div class="rm-glass-card rm-electric">
-  <div class="rm-card-label">5 Hook Variations — {topic}</div>
-  <div class="rm-card-body">{hooks}</div>
-</div>""", unsafe_allow_html=True)
-                    st.download_button("↓ DOWNLOAD HOOKS", hooks,
-                        file_name=f"hooks_{topic[:20].replace(' ','_')}.txt", mime="text/plain")
-                else:
-                    st.error(hooks or "Generation failed.")
+        with tab3:
+            formatted = format_script(result.get("script",""))
+            glass_card("Reel Script — 30 Seconds", formatted, T["purple"], 300)
+            st.download_button("↓ DOWNLOAD SCRIPT", result.get("script",""),
+                file_name="reel_script.txt", key="dl_sc")
 
-            # ── CONTENT SERIES ──
-            elif mode == "Content Series":
-                with st.spinner(""):
-                    series = generate_series(topic, niche, platform, num_posts)
-                if series and "ERROR" not in series:
-                    st.markdown(f"""
-<div class="rm-glass-card rm-electric">
-  <div class="rm-card-label">{num_posts}-Post Content Series — {topic}</div>
-  <div class="rm-card-body">{series}</div>
-</div>""", unsafe_allow_html=True)
-                    st.download_button("↓ DOWNLOAD SERIES", series,
-                        file_name=f"series_{topic[:20].replace(' ','_')}.txt", mime="text/plain")
-                else:
-                    st.error(series or "Generation failed.")
+        with tab4:
+            thumb = result.get("thumbnail","")
+            mj_m = re.search(r'(?:IMAGE PROMPT|PROMPT)[^:]*:\s*([\s\S]*?)(?=STYLE|$)', thumb, re.I)
+            style_m = re.search(r'STYLE[^:]*:\s*([\s\S]*?)(?=COLOR|$)', thumb, re.I)
+            color_m = re.search(r'COLOR[^:]*:\s*([\s\S]*?)$', thumb, re.I)
+            base = mj_m.group(1).strip() if mj_m else thumb[:300]
+            style = style_m.group(1).strip() if style_m else ""
+            colors = color_m.group(1).strip() if color_m else ""
+            mj = f"{base}\n\n--style raw --ar 9:16 --v 6\nStyle: {style}\nColors: {colors}"
+            ideogram = f"{base}\n\nStyle: {style}\nPalette: {colors}\nHigh detail, sharp focus, 9:16"
+            glass_card("Midjourney Prompt", mj, T["accent"], 180)
+            st.download_button("↓ MJ PROMPT", mj, file_name="mj_prompt.txt", key="dl_mj")
+            glass_card("Ideogram / Gemini Image Prompt", ideogram, T["blue"], 180)
+            st.download_button("↓ IDEOGRAM PROMPT", ideogram, file_name="ideogram_prompt.txt", key="dl_id")
 
-            # ── CAROUSEL ──
-            elif mode == "Carousel Post":
-                with st.spinner(""):
-                    carousel = generate_carousel(topic, niche, num_slides)
-                if carousel and "ERROR" not in carousel:
-                    st.markdown(f"""
-<div class="rm-glass-card rm-electric">
-  <div class="rm-card-label">{num_slides}-Slide Carousel — {topic}</div>
-  <div class="rm-card-body">{carousel}</div>
-</div>""", unsafe_allow_html=True)
-                    st.download_button("↓ DOWNLOAD CAROUSEL", carousel,
-                        file_name=f"carousel_{topic[:20].replace(' ','_')}.txt", mime="text/plain")
-                else:
-                    st.error(carousel or "Generation failed.")
-
-            # ── YOUTUBE SCRIPT ──
-            elif mode == "YouTube Script":
-                with st.spinner(""):
-                    yt = generate_youtube_script(topic, niche, yt_duration)
-                if yt and "ERROR" not in yt:
-                    st.markdown(f"""
-<div class="rm-glass-card rm-electric">
-  <div class="rm-card-label">{yt_duration}-Minute YouTube Script — {topic}</div>
-  <div class="rm-card-body">{yt}</div>
-</div>""", unsafe_allow_html=True)
-                    st.download_button("↓ DOWNLOAD SCRIPT", yt,
-                        file_name=f"yt_script_{topic[:20].replace(' ','_')}.txt", mime="text/plain")
-                else:
-                    st.error(yt or "Generation failed.")
-
-            # ── TWITTER THREAD ──
-            elif mode == "X/Twitter Thread":
-                with st.spinner(""):
-                    thread = generate_twitter_thread(topic, niche, tweet_count)
-                if thread and "ERROR" not in thread:
-                    st.markdown(f"""
-<div class="rm-glass-card rm-electric">
-  <div class="rm-card-label">{tweet_count}-Tweet Thread — {topic}</div>
-  <div class="rm-card-body">{thread}</div>
-</div>""", unsafe_allow_html=True)
-                    st.download_button("↓ DOWNLOAD THREAD", thread,
-                        file_name=f"thread_{topic[:20].replace(' ','_')}.txt", mime="text/plain")
-                else:
-                    st.error(thread or "Generation failed.")
-
-            # ── REPURPOSE ──
-            elif mode == "Repurpose Content":
-                with st.spinner(""):
-                    repurposed = repurpose_content(original_content, original_platform, target_platform, niche)
-                if repurposed and "ERROR" not in repurposed:
-                    st.markdown(f"""
-<div class="rm-glass-card rm-electric">
-  <div class="rm-card-label">Repurposed for {target_platform}</div>
-  <div class="rm-card-body">{repurposed}</div>
-</div>""", unsafe_allow_html=True)
-                    st.download_button("↓ DOWNLOAD", repurposed,
-                        file_name=f"repurposed_{target_platform.replace(' ','_')}.txt", mime="text/plain")
-                else:
-                    st.error(repurposed or "Generation failed.")
+        gradient_divider()
+        full = f"REELMIND AI\nTopic:{topic} | Niche:{niche} | Platform:{platform}\n{'='*60}\n\n{result.get('raw','')}"
+        c1, c2 = st.columns(2)
+        with c1:
+            st.download_button("↓ DOWNLOAD FULL PACK", full,
+                file_name=f"reelmind_{topic[:20].replace(' ','_')}_full.txt", key="dl_full")
+        with c2:
+            st.download_button("↓ DOWNLOAD RAW", result.get("raw",""),
+                file_name="reelmind_raw.txt", key="dl_raw")
 
     else:
-        # Empty state
-        st.markdown("""
-<div style="border: 1px dashed rgba(255,255,255,0.06); border-radius: 16px; padding: 80px 40px;
-text-align: center; margin-top: 8px; background: rgba(255,255,255,0.01);">
-    <div style="font-family: Space Mono, monospace; font-size: 9px; letter-spacing: 3px;
-    text-transform: uppercase; color: #2a2840; margin-bottom: 16px;">Awaiting Input</div>
-    <div style="font-size: 32px; margin-bottom: 16px; opacity: 0.3;">🎬</div>
-    <div style="font-size: 13px; color: #2a2840; line-height: 1.7; font-family: Space Grotesk, sans-serif;">
-        Configure your parameters on the left<br>and hit Generate.
-    </div>
-</div>""", unsafe_allow_html=True)
+        mode_label = mode.split(" ",1)[1] if " " in mode else mode
+        glass_card(mode_label, raw_output or "No output generated.", T["accent"], 400)
+        if raw_output:
+            st.download_button("↓ DOWNLOAD OUTPUT", raw_output,
+                file_name=f"reelmind_{topic[:20].replace(' ','_')}.txt", key="dl_other")
 
-st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-# =====================================
+# ══════════════════════════════════════════
 # FOOTER
-# =====================================
-
+# ══════════════════════════════════════════
 st.markdown(f"""
-<div class="rm-footer">
-    <div class="rm-footer-text">REELMIND AI — v4.0 — POWERED BY GEMINI 2.5 FLASH</div>
-    <div class="rm-footer-text">{st.session_state.gen_count} generations this session · BUILT BY SATVIK SHARMA</div>
-</div>
+<div style="padding:16px 40px;border-top:1px solid {T["rule"]};background:{T["bg2"]};
+display:flex;justify-content:space-between;align-items:center;margin-top:40px;">
+  <div style="font-family:'Space Mono',monospace;font-size:8px;
+  letter-spacing:2px;text-transform:uppercase;color:{T["text4"]};">
+    REELMIND AI — v3.0 — GEMINI 2.5 FLASH</div>
+  <div style="font-family:'Space Mono',monospace;font-size:8px;
+  color:{T["text4"]};background:{T["bg3"]};border:1px solid {T["rule2"]};padding:3px 8px;">
+    BUILT BY SATVIK SHARMA · NIET 2024–28</div>
 </div>
 """, unsafe_allow_html=True)
