@@ -18,7 +18,7 @@ st.set_page_config(
     page_title="ReelMind AI",
     page_icon="🎬",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 # ══════════════════════════════════════════
@@ -27,10 +27,9 @@ st.set_page_config(
 for key, default in [
     ("history", []), ("theme", "dark"),
     ("last_result", None), ("last_scores", None),
-    ("generated", False), ("page", "main"),
-    ("sidebar_open", True), ("video_stories", None),
-    ("video_package", None), ("video_generating", False),
-    ("selected_story", None)
+    ("generated", False), ("page", "home"),
+    ("video_stories", None), ("video_package", None),
+    ("transition", None),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -156,12 +155,8 @@ html, body,
     font-family:'Space Grotesk',sans-serif !important;
 }}
 [data-testid="stHeader"] {{ display:none !important; }}
+[data-testid="stSidebar"] {{ display:none !important; }}
 .block-container {{ padding:0 !important; max-width:100% !important; }}
-[data-testid="stSidebar"] {{
-    background:{T["bg2"]} !important;
-    border-right:1px solid {T["rule"]} !important;
-}}
-[data-testid="stSidebar"] * {{ color:{T["text"]} !important; }}
 .stTextInput>div>div>input,.stTextArea>div>div>textarea {{
     background:{T["bg3"]} !important; border:1px solid {T["rule2"]} !important;
     border-radius:0 !important; color:{T["text"]} !important;
@@ -194,10 +189,10 @@ label,.stSelectbox label,.stTextInput label,.stTextArea label,.stRadio label {{
     color:{T["text3"]} !important; font-family:'Space Mono',monospace !important;
     font-size:8px !important; letter-spacing:2px !important; text-transform:uppercase !important;
 }}
-.stRadio>div {{ gap:3px !important; flex-direction:column !important; }}
+.stRadio>div {{ gap:6px !important; flex-direction:row !important; flex-wrap:wrap !important; }}
 .stRadio>div>label {{
     background:{T["bg3"]} !important; border:1px solid {T["rule2"]} !important;
-    padding:9px 14px !important; transition:all 0.15s !important;
+    padding:8px 14px !important; transition:all 0.15s !important;
     color:{T["text3"]} !important; font-size:11px !important;
     letter-spacing:1px !important; border-radius:0 !important; margin:0 !important;
 }}
@@ -268,7 +263,6 @@ hr {{ border-color:{T["rule"]} !important; margin:20px 0 !important; }}
 ::-webkit-scrollbar-thumb {{ background:{T["rule2"]}; }}
 ::-webkit-scrollbar-thumb:hover {{ background:{T["accent"]}; }}
 
-/* GENERATE BUTTON — single premium button */
 div[data-testid="stButton"] button[kind="primary"],
 .generate-btn > div > button {{
     background: linear-gradient(135deg, {T["accent"]} 0%, {T["accent2"]} 40%, {T["purple"]} 100%) !important;
@@ -291,7 +285,6 @@ div[data-testid="stButton"] button[kind="primary"],
     100% {{ background-position: 0% 50%; }}
 }}
 
-/* GOLD VIDEO BUTTON */
 .gold-btn-container > div > button {{
     background: linear-gradient(135deg, #92400e 0%, {T["gold"]} 40%, {T["gold2"]} 70%, #92400e 100%) !important;
     background-size: 300% 300% !important;
@@ -313,23 +306,25 @@ div[data-testid="stButton"] button[kind="primary"],
     100% {{ background-position: 0% 50%; }}
 }}
 
-/* SIDEBAR TOGGLE BUTTON */
-.sidebar-toggle-btn > div > button {{
+/* HOME BUTTON */
+.home-btn-container > div > button {{
     background: {T["bg3"]} !important;
-    color: {T["accent"]} !important;
-    border: 1px solid {T["accent"]}60 !important;
-    font-size: 16px !important;
-    padding: 6px 12px !important;
-    letter-spacing: 0 !important;
+    color: {T["text2"]} !important;
+    border: 1px solid {T["rule2"]} !important;
+    font-family: 'Space Mono', monospace !important;
+    font-size: 9px !important;
+    letter-spacing: 2px !important;
+    text-transform: uppercase !important;
+    padding: 9px 16px !important;
     width: auto !important;
-    box-shadow: 0 0 10px {T["accent"]}20 !important;
 }}
-.sidebar-toggle-btn > div > button:hover {{
-    background: {T["accent"]}15 !important;
-    box-shadow: 0 0 16px {T["accent"]}40 !important;
+.home-btn-container > div > button:hover {{
+    border-color: {T["accent"]} !important;
+    color: {T["accent"]} !important;
+    box-shadow: 0 0 14px {T["accent"]}25 !important;
 }}
 
-/* OUTPUT CARD with copy */
+/* OUTPUT CARD */
 .output-card {{
     background: {T["glass"]};
     border: 1px solid {T["glassborder"]};
@@ -343,7 +338,6 @@ div[data-testid="stButton"] button[kind="primary"],
     white-space: pre-wrap;
 }}
 
-/* CONFIDENCE BADGE */
 .confidence-badge {{
     display: inline-flex;
     align-items: center;
@@ -357,17 +351,6 @@ div[data-testid="stButton"] button[kind="primary"],
     color: {T["green"]};
     text-transform: uppercase;
 }}
-.confidence-dot {{
-    width: 6px; height: 6px;
-    background: {T["green"]};
-    border-radius: 50%;
-    animation: confPulse 1.5s infinite;
-    display: inline-block;
-}}
-@keyframes confPulse {{
-    0%,100% {{ opacity:1; box-shadow:0 0 4px {T["green"]}; }}
-    50% {{ opacity:0.4; box-shadow:none; }}
-}}
 @keyframes pulse {{
     0%,100% {{ opacity:1; }}
     50% {{ opacity:0.3; }}
@@ -376,9 +359,9 @@ div[data-testid="stButton"] button[kind="primary"],
 """, unsafe_allow_html=True)
 
 # ══════════════════════════════════════════
-# NEURAL NETWORK BACKGROUND
+# NEURAL NETWORK BACKGROUND (ambient, all pages)
 # ══════════════════════════════════════════
-def inject_premium_effects():
+def inject_premium_effects(accent_hex="255,75,43"):
     components.html(f"""
 <!DOCTYPE html><html><head>
 <style>
@@ -432,7 +415,7 @@ function drawNetwork() {{
             const dx=nodes[i].x-nodes[j].x, dy=nodes[i].y-nodes[j].y;
             const dist=Math.sqrt(dx*dx+dy*dy);
             if(dist<110) {{
-                ctx.beginPath(); ctx.strokeStyle=`rgba(255,75,43,${{(1-dist/110)*0.18}})`; ctx.lineWidth=0.6;
+                ctx.beginPath(); ctx.strokeStyle=`rgba({accent_hex},${{(1-dist/110)*0.18}})`; ctx.lineWidth=0.6;
                 ctx.moveTo(nodes[i].x,nodes[i].y); ctx.lineTo(nodes[j].x,nodes[j].y); ctx.stroke();
             }}
         }}
@@ -440,9 +423,9 @@ function drawNetwork() {{
     nodes.forEach(n => {{
         const p=Math.sin(n.pulse)*0.5+0.5, alpha=0.25+p*0.35, r=n.r+p*0.8;
         ctx.beginPath(); ctx.arc(n.x,n.y,r,0,Math.PI*2);
-        ctx.fillStyle=`rgba(255,75,43,${{alpha}})`; ctx.fill();
+        ctx.fillStyle=`rgba({accent_hex},${{alpha}})`; ctx.fill();
         ctx.beginPath(); ctx.arc(n.x,n.y,r*2.5,0,Math.PI*2);
-        ctx.fillStyle=`rgba(255,75,43,${{alpha*0.1}})`; ctx.fill();
+        ctx.fillStyle=`rgba({accent_hex},${{alpha*0.1}})`; ctx.fill();
     }});
     requestAnimationFrame(drawNetwork);
 }}
@@ -450,6 +433,92 @@ drawNetwork();
 window.addEventListener('resize',()=>{{ canvas.width=window.innerWidth; canvas.height=window.innerHeight; }});
 window.addEventListener('mousemove',e=>{{ mouseX=e.clientX; mouseY=e.clientY; }});
 </script>
+</body></html>
+""", height=0, scrolling=False)
+
+# ══════════════════════════════════════════
+# GLASS SHATTER TRANSITION OVERLAY
+# Plays a full-screen shatter animation, then sends a
+# message back to Streamlit (via query param reload) to
+# switch pages once the animation completes.
+# ══════════════════════════════════════════
+def shatter_overlay(accent_color, target_page, label="ENTERING"):
+    """Renders a full-viewport shattering glass overlay that plays once,
+    then triggers a rerun into target_page by writing to sessionStorage
+    and forcing Streamlit's component to send a value back."""
+    shards = ""
+    cols, rows = 10, 6
+    cell_w, cell_h = 100/cols, 100/rows
+    for r in range(rows):
+        for c in range(cols):
+            x = c*cell_w
+            y = r*cell_h
+            # randomized fall direction & rotation per shard
+            dx = random.randint(-260, 260)
+            dy = random.randint(180, 520)
+            rot = random.randint(-260, 260)
+            delay = round(random.uniform(0, 0.18), 2)
+            dur = round(random.uniform(0.6, 1.05), 2)
+            # irregular triangle-ish clip via polygon jitter
+            jitter = lambda: random.randint(-6,6)
+            poly = f"polygon({jitter()+0}% {jitter()+0}%, {100+jitter()}% {jitter()}%, {100+jitter()}% {100+jitter()}%, {jitter()}% {100+jitter()}%)"
+            shards += f"""
+<div class="shard" style="
+    left:{x}vw; top:{y}vh; width:{cell_w}vw; height:{cell_h}vh;
+    --dx:{dx}px; --dy:{dy}px; --rot:{rot}deg;
+    animation-delay:{delay}s; animation-duration:{dur}s;
+    clip-path:{poly};
+"></div>"""
+
+    components.html(f"""
+<!DOCTYPE html><html><head>
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html,body {{ width:100%; height:100%; overflow:hidden; background:transparent; }}
+.stage {{
+    position:fixed; inset:0; width:100vw; height:100vh; z-index:99999;
+    pointer-events:none;
+}}
+.shard {{
+    position:absolute;
+    background:
+        linear-gradient(135deg, {accent_color}22, transparent 60%),
+        rgba(255,255,255,0.045);
+    border:1px solid {accent_color}33;
+    backdrop-filter: blur(6px);
+    animation-name: fall;
+    animation-timing-function: cubic-bezier(.5,0,.85,1);
+    animation-fill-mode: forwards;
+    box-shadow: 0 0 18px {accent_color}22 inset;
+}}
+@keyframes fall {{
+    0% {{ transform: translate(0,0) rotate(0deg) scale(1); opacity:1; }}
+    60% {{ opacity:1; }}
+    100% {{ transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(0.85); opacity:0; }}
+}}
+.flash {{
+    position:fixed; inset:0; background:{accent_color};
+    opacity:0; animation: flashpop 0.5s ease-out forwards;
+    mix-blend-mode: screen;
+}}
+@keyframes flashpop {{
+    0% {{ opacity:0.55; }}
+    100% {{ opacity:0; }}
+}}
+.label {{
+    position:fixed; bottom:36px; left:50%; transform:translateX(-50%);
+    font-family:'Space Mono',monospace; font-size:10px; letter-spacing:6px;
+    text-transform:uppercase; color:{accent_color};
+    opacity:0; animation: labelpop 1s ease-out 0.15s forwards;
+}}
+@keyframes labelpop {{ 0% {{opacity:0;}} 30% {{opacity:1;}} 100% {{opacity:0;}} }}
+</style>
+</head><body>
+<div class="stage">
+<div class="flash"></div>
+{shards}
+<div class="label">{label}</div>
+</div>
 </body></html>
 """, height=0, scrolling=False)
 
@@ -590,7 +659,6 @@ body {{ background:transparent;font-family:'Space Mono',monospace;padding:4px 2p
 </div>
 <div class="grid">{cards_html}</div>
 <script>
-// Confidence count-up
 (function() {{
     const target = {confidence};
     let cur = 0; const step = Math.ceil(target/50);
@@ -601,8 +669,6 @@ body {{ background:transparent;font-family:'Space Mono',monospace;padding:4px 2p
         if(cur>=target) clearInterval(timer);
     }}, 20);
 }})();
-
-// Score count-ups
 document.querySelectorAll('.score-value').forEach(el => {{
     const target = parseInt(el.dataset.target);
     let cur = 0; const step = Math.ceil(target/50);
@@ -612,13 +678,10 @@ document.querySelectorAll('.score-value').forEach(el => {{
         if(cur>=target) clearInterval(timer);
     }}, 25);
 }});
-
-// Fill bars
 setTimeout(()=>{{
     document.querySelectorAll('.score-fill').forEach(el=>{{ el.style.width = el.dataset.width + '%'; }});
     document.getElementById('confBar').style.width = document.getElementById('confBar').dataset.width + '%';
 }}, 80);
-
 function tilt(card,e) {{
     const r=card.getBoundingClientRect();
     const rx=((e.clientY-r.top-r.height/2)/r.height)*-8;
@@ -659,8 +722,6 @@ new Chart(document.getElementById('rc'), {{
 def hashtag_component(hv, mv, nv):
     def tags_html(tags, color):
         return "".join([f'<span class="tag" style="--c:{color};" onclick="copyTag(this)">{t}</span>' for t in tags])
-
-    all_tags_escaped = " ".join(hv+mv+nv).replace("'", "\\'")
 
     components.html(f"""
 <!DOCTYPE html><html><head>
@@ -705,17 +766,14 @@ function copyGroup(id) {{ const tags=Array.from(document.getElementById(id).quer
 # ══════════════════════════════════════════
 # TOPBAR
 # ══════════════════════════════════════════
-inject_premium_effects()
-
-theme_icon = "🌙" if IS_DARK else "🌕"
-
-# Topbar with sidebar toggle
-st.markdown(f"""
+def render_topbar(show_home=False, status_label="GEMINI LIVE"):
+    home_html = ""
+    cols = st.columns([0.06, 0.94]) if show_home else None
+    st.markdown(f"""
 <div style="display:flex;align-items:center;justify-content:space-between;
 padding:0 20px 0 16px;height:52px;background:{T["bg2"]}ee;
 border-bottom:1px solid {T["rule"]};backdrop-filter:blur(20px);position:sticky;top:0;z-index:100;">
   <div style="display:flex;align-items:center;gap:10px;">
-    <div id="sidebar-toggle-placeholder" style="width:36px;"></div>
     <div style="width:26px;height:26px;background:{T["accent"]};
     display:flex;align-items:center;justify-content:center;font-size:13px;
     box-shadow:0 0 16px {T["accent"]}60;">🎬</div>
@@ -724,173 +782,147 @@ border-bottom:1px solid {T["rule"]};backdrop-filter:blur(20px);position:sticky;t
   </div>
   <div style="display:flex;align-items:center;gap:12px;">
     <div style="display:flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:8px;color:{T["green"]};">
-        <div style="width:5px;height:5px;background:{T["green"]};border-radius:50%;animation:pulse 2s infinite;"></div>GEMINI LIVE
+        <div style="width:5px;height:5px;background:{T["green"]};border-radius:50%;animation:pulse 2s infinite;"></div>{status_label}
     </div>
-    <div style="font-family:'Space Mono',monospace;font-size:8px;color:{T["text4"]};background:{T["bg3"]};border:1px solid {T["rule2"]};padding:3px 8px;">v4.0</div>
+    <div style="font-family:'Space Mono',monospace;font-size:8px;color:{T["text4"]};background:{T["bg3"]};border:1px solid {T["rule2"]};padding:3px 8px;">v5.0</div>
   </div>
 </div>
 """, unsafe_allow_html=True)
 
-# ══════════════════════════════════════════
-# SIDEBAR
-# ══════════════════════════════════════════
-with st.sidebar:
-    # Sidebar header with close button
-    c_title, c_close = st.columns([4,1])
-    with c_title:
-        st.markdown(f'<div style="font-family:Space Mono,monospace;font-size:8px;letter-spacing:3px;text-transform:uppercase;color:{T["text4"]};padding-top:8px;">⚡ Content Engine</div>', unsafe_allow_html=True)
-    with c_close:
-        st.markdown('<div class="sidebar-toggle-btn">', unsafe_allow_html=True)
-        if st.button("✕", key="close_sidebar"):
-            st.session_state.sidebar_open = False
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    col_t1, col_t2 = st.columns([3,1])
-    with col_t2:
-        if st.button(theme_icon, key="theme_btn"):
-            st.session_state.theme = "light" if IS_DARK else "dark"
-            st.rerun()
-
-    st.markdown("---")
-
-    # Page navigation
-    page_options = ["🎬 Content Generator", "🎥 Video Story Creator"]
-    current_page_idx = 0 if st.session_state.page == "main" else 1
-    selected_page = st.radio("Navigation", page_options, index=current_page_idx, label_visibility="collapsed")
-    if "Content Generator" in selected_page:
-        st.session_state.page = "main"
-    else:
-        st.session_state.page = "video"
-
-    st.markdown("---")
-
-    if st.session_state.page == "main":
-        mode = st.radio("Mode", [
-            "⚡ Full Content Pack","🎯 Hook Ideas Only",
-            "📅 Content Series","🎠 Carousel Post",
-            "🧵 X/Twitter Thread","🔄 Content Repurposer"
-        ], label_visibility="collapsed")
-
-        st.markdown("---")
-        topic = st.text_input("Topic", placeholder="e.g. Villain arc, AI Tools, Gym motivation...")
-        niche = st.selectbox("Niche", [
-            "Dark Aesthetic / Motivation","Gaming","Anime & Manga",
-            "Fitness & Gym","Tech & AI","Finance & Investing",
-            "Horror & Thriller","Fashion & Lifestyle","Education",
-            "Movie Industry","Music & Artists","Business & Entrepreneurship",
-            "Luxury & Premium","Cars & Motorsport","Travel & Adventure","Food & Cooking"
-        ])
-        platform = st.selectbox("Platform", ["Instagram Reels","TikTok","YouTube Shorts"])
-        tone = st.selectbox("Tone", [
-            "Viral & Bold","Dark & Cinematic","Motivational & Intense",
-            "Minimal & Clean","Edgy & Controversial","Informative & Professional"
-        ])
-
-        num_posts = 5
-        if "Series" in mode:
-            num_posts = st.selectbox("Posts in Series", [3,5,7])
-
-        original_content = ""
-        target_platform = "TikTok"
-        if "Repurposer" in mode:
-            original_content = st.text_area("Paste original content", height=80)
-            target_platform = st.selectbox("Repurpose for", ["TikTok","YouTube Shorts","X/Twitter","LinkedIn"])
-
-        st.markdown("---")
-        # Single premium generate button
-        st.markdown('<div class="generate-btn">', unsafe_allow_html=True)
-        generate_btn = st.button("→ GENERATE CONTENT", key="gen_main", type="primary")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        # Gold video button
-        st.markdown('<br>', unsafe_allow_html=True)
-        st.markdown('<div class="gold-btn-container">', unsafe_allow_html=True)
-        video_page_btn = st.button("🎥 CREATE VIDEO STORY", key="goto_video")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        if video_page_btn:
-            st.session_state.page = "video"
-            st.rerun()
-
-    else:
-        # Video page sidebar controls
-        st.markdown(f'<div style="font-family:Space Mono,monospace;font-size:8px;letter-spacing:2px;text-transform:uppercase;color:{T["gold"]};margin-bottom:12px;">🎥 Video Story Engine</div>', unsafe_allow_html=True)
-
-        v_animal = st.selectbox("Character", [
-            "Puppy 🐶","Kitten 🐱","Baby Penguin 🐧","Baby Fox 🦊",
-            "Baby Panda 🐼","Baby Bunny 🐰","Baby Duck 🦆","Custom..."
-        ])
-        if v_animal == "Custom...":
-            v_animal = st.text_input("Describe your character", placeholder="e.g. tiny orange dragon")
-
-        v_story_type = st.selectbox("Story Type", [
-            "Funny","Emotional","Cute & Heartwarming",
-            "Adventure","Action","Mystery","Educational"
-        ])
-        v_duration = st.selectbox("Video Duration (seconds)", [8,16,24,30,40,60])
-        v_style = st.selectbox("Animation Style", [
-            "Pixar","Disney","DreamWorks","Anime","Chibi","Realistic"
-        ])
-        v_platform = st.selectbox("Platform", ["Instagram Reels","TikTok","YouTube Shorts"])
-        v_ending = st.selectbox("Ending Type", [
-            "Funny / Comedic","Emotional / Heartwarming",
-            "Twist / Unexpected","Happy","Random"
-        ])
-
-        st.markdown("---")
-        st.markdown('<div class="generate-btn">', unsafe_allow_html=True)
-        generate_stories_btn = st.button("→ GENERATE STORIES", key="gen_stories", type="primary")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        generate_btn = False  # not on this page
-        topic = ""
-        niche = ""
-        platform = ""
-        tone = ""
-        mode = ""
-        num_posts = 5
-        original_content = ""
-        target_platform = "TikTok"
-
-    with st.expander("QUICK TIPS"):
-        st.markdown(f'<div style="font-family:Space Grotesk,sans-serif;font-size:12px;color:{T["text3"]};line-height:1.8;">→ Specific topics outperform generic<br>→ <strong style="color:{T["text2"]};">"Villain arc workout" &gt; "gym"</strong><br>→ Match tone to your content style<br>→ Use Hook mode to A/B test openings</div>', unsafe_allow_html=True)
-
-    if st.session_state.history:
-        st.markdown("---")
-        st.markdown(f'<div style="font-family:Space Mono,monospace;font-size:8px;letter-spacing:2px;text-transform:uppercase;color:{T["text4"]};margin-bottom:8px;">Recent</div>', unsafe_allow_html=True)
-        for h in st.session_state.history[-4:]:
-            st.markdown(f'<div style="background:{T["bg3"]};border:1px solid {T["rule"]};padding:8px 10px;margin-bottom:3px;"><div style="font-size:12px;font-weight:500;color:{T["text"]};">{h["topic"][:24]}</div><div style="font-family:Space Mono,monospace;font-size:7px;color:{T["text4"]};">{h["niche"][:22]} · {h["time"]}</div></div>', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════
-# SIDEBAR REOPEN BUTTON (when closed)
+# HANDLE PENDING NAVIGATION (shatter transition)
 # ══════════════════════════════════════════
-if not st.session_state.sidebar_open:
+if st.session_state.transition:
+    target, accent, label = st.session_state.transition
+    inject_premium_effects(accent)
+    shatter_overlay(accent, target, label)
+    time.sleep(1.05)
+    st.session_state.page = target
+    st.session_state.transition = None
+    st.rerun()
+
+# ══════════════════════════════════════════
+# ── PAGE: HOME / LANDING ──
+# ══════════════════════════════════════════
+if st.session_state.page == "home":
+    inject_premium_effects("255,75,43")
+    render_topbar(status_label="STUDIO READY")
+
     st.markdown(f"""
-<style>
-[data-testid="stSidebar"] {{ display:none !important; }}
-.reopen-fixed {{
-    position: fixed !important;
-    top: 8px !important;
-    left: 8px !important;
-    z-index: 9999 !important;
-}}
-</style>
+<div style="padding:54px 40px 10px;text-align:center;">
+  <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:5px;text-transform:uppercase;color:{T["text4"]};margin-bottom:18px;">
+    AI CREATIVE STUDIO — PICK YOUR WORKSPACE
+  </div>
+  <div style="font-family:'Fraunces',serif;font-size:64px;font-weight:900;font-style:italic;line-height:0.95;letter-spacing:-2px;color:{T["text"]};margin-bottom:14px;">
+    Reel<span style="color:{T["accent"]};">Mind</span> <span style="color:{T["text4"]};">AI</span>
+  </div>
+  <div style="font-size:13px;color:{T["text3"]};max-width:520px;margin:0 auto 40px;line-height:1.7;">
+    Two studios, one engine. Step through the glass into the workspace you need —
+    written content & strategy, or full cinematic AI video production.
+  </div>
+</div>
 """, unsafe_allow_html=True)
-    st.markdown('<div class="reopen-fixed sidebar-toggle-btn">', unsafe_allow_html=True)
-    if st.button("☰", key="open_sidebar"):
-        st.session_state.sidebar_open = True
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+
+    col1, col2 = st.columns(2, gap="large")
+
+    with col1:
+        st.markdown(f"""
+<div class="panel-glass" style="
+    border:1px solid {T["accent"]}30; border-top:2px solid {T["accent"]};
+    background:linear-gradient(160deg, {T["accent"]}0d, transparent 70%), {T["glass"]};
+    backdrop-filter:blur(14px); padding:36px 30px; margin:0 40px 8px; min-height:300px;
+    position:relative; overflow:hidden; transition:all 0.3s;
+">
+  <div style="position:absolute; inset:0; background:
+    repeating-linear-gradient(0deg, transparent 0 38px, {T["accent"]}08 38px 39px),
+    repeating-linear-gradient(90deg, transparent 0 38px, {T["accent"]}08 38px 39px);
+    opacity:0.5; pointer-events:none;"></div>
+  <div style="font-family:'Space Mono',monospace;font-size:8px;letter-spacing:4px;text-transform:uppercase;color:{T["accent"]};margin-bottom:14px;">
+    01 — STUDIO A
+  </div>
+  <div style="font-family:'Fraunces',serif;font-size:36px;font-weight:900;font-style:italic;color:{T["text"]};margin-bottom:10px;line-height:1;">
+    Content Studio
+  </div>
+  <div style="font-size:13px;color:{T["text3"]};line-height:1.7;margin-bottom:24px;max-width:340px;">
+    Captions, hashtag stacks, hooks, content series, carousels, X threads,
+    and full reel scripts — scored and ready to post.
+  </div>
+  <div style="display:flex;gap:18px;flex-wrap:wrap;font-family:'Space Mono',monospace;font-size:8px;letter-spacing:2px;text-transform:uppercase;color:{T["text4"]};">
+    <span>6 modes</span><span>·</span><span>30 hashtags</span><span>·</span><span>score card</span>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+        st.markdown('<div class="generate-btn">', unsafe_allow_html=True)
+        if st.button("→ ENTER CONTENT STUDIO", key="enter_main"):
+            st.session_state.transition = ("main", T["accent"], "ENTERING CONTENT STUDIO")
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col2:
+        st.markdown(f"""
+<div class="panel-glass" style="
+    border:1px solid {T["gold"]}30; border-top:2px solid {T["gold"]};
+    background:linear-gradient(160deg, {T["gold"]}0d, transparent 70%), {T["glass"]};
+    backdrop-filter:blur(14px); padding:36px 30px; margin:0 40px 8px; min-height:300px;
+    position:relative; overflow:hidden; transition:all 0.3s;
+">
+  <div style="position:absolute; inset:0; background:
+    repeating-linear-gradient(0deg, transparent 0 38px, {T["gold"]}08 38px 39px),
+    repeating-linear-gradient(90deg, transparent 0 38px, {T["gold"]}08 38px 39px);
+    opacity:0.5; pointer-events:none;"></div>
+  <div style="font-family:'Space Mono',monospace;font-size:8px;letter-spacing:4px;text-transform:uppercase;color:{T["gold"]};margin-bottom:14px;">
+    02 — STUDIO B
+  </div>
+  <div style="font-family:'Fraunces',serif;font-size:36px;font-weight:900;font-style:italic;color:{T["text"]};margin-bottom:10px;line-height:1;">
+    Video Story Engine
+  </div>
+  <div style="font-size:13px;color:{T["text3"]};line-height:1.7;margin-bottom:24px;max-width:340px;">
+    Cinematic AI animal shorts — 3 viral story options, character design sheets,
+    first-frame prompts, and a full Google Flow / Gemini Video prompt chain.
+  </div>
+  <div style="display:flex;gap:18px;flex-wrap:wrap;font-family:'Space Mono',monospace;font-size:8px;letter-spacing:2px;text-transform:uppercase;color:{T["text4"]};">
+    <span>3 story options</span><span>·</span><span>4K Pixar quality</span><span>·</span><span>9:16</span>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+        st.markdown('<div class="gold-btn-container">', unsafe_allow_html=True)
+        if st.button("→ ENTER VIDEO STUDIO", key="enter_video"):
+            st.session_state.transition = ("video", T["gold"], "ENTERING VIDEO STUDIO")
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown(f"""
+<div style="padding:48px 40px 16px;border-top:1px solid {T["rule"]};background:{T["bg2"]};
+display:flex;justify-content:space-between;align-items:center;margin-top:48px;">
+  <div style="font-family:'Space Mono',monospace;font-size:8px;letter-spacing:2px;text-transform:uppercase;color:{T["text4"]};">
+    REELMIND AI — v5.0 — GEMINI 2.5 FLASH</div>
+  <div style="font-family:'Space Mono',monospace;font-size:8px;color:{T["text4"]};background:{T["bg3"]};border:1px solid {T["rule2"]};padding:3px 8px;">
+    BUILT BY SATVIK SHARMA · NIET 2024–28</div>
+</div>
+""", unsafe_allow_html=True)
+
 
 # ══════════════════════════════════════════
 # ── PAGE: VIDEO STORY CREATOR ──
 # ══════════════════════════════════════════
-if st.session_state.page == "video":
+elif st.session_state.page == "video":
+    inject_premium_effects("245,158,11")
+    render_topbar(status_label="GEMINI LIVE")
+
+    # Home button
+    st.markdown("<div style='padding:14px 40px 0;'>", unsafe_allow_html=True)
+    st.markdown('<div class="home-btn-container">', unsafe_allow_html=True)
+    if st.button("← SHATTER BACK TO HOME", key="home_from_video"):
+        st.session_state.transition = ("home", T["gold"], "RETURNING HOME")
+        st.session_state.video_stories = None
+        st.session_state.video_package = None
+        st.rerun()
+    st.markdown('</div></div>', unsafe_allow_html=True)
 
     # Hero for video page
     st.markdown(f"""
-<div style="padding:36px 40px 24px;border-bottom:1px solid {T["gold"]}30;position:relative;overflow:hidden;">
+<div style="padding:24px 40px 24px;border-bottom:1px solid {T["gold"]}30;position:relative;overflow:hidden;">
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 20% 50%,{T["gold"]}08 0%,transparent 60%);pointer-events:none;"></div>
   <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:4px;text-transform:uppercase;color:{T["gold"]};margin-bottom:10px;display:flex;align-items:center;gap:10px;">
     <span style="width:18px;height:1px;background:{T["gold"]};display:inline-block;"></span>
@@ -900,11 +932,11 @@ if st.session_state.page == "video":
     Video <span style="color:{T["gold"]};">Story</span>
     <span style="color:{T["text4"]};">Creator</span>
   </div>
-  <div style="font-size:13px;color:{T["text3"]};max-width:500px;line-height:1.7;margin-bottom:20px;">
+  <div style="font-size:13px;color:{T["text3"]};max-width:560px;line-height:1.7;margin-bottom:8px;">
     Generate complete production-ready video packages: 3 story options with viral scores,
     character design sheets, first frame prompts, and a full prompt chain for Google Flow or Gemini Video.
   </div>
-  <div style="display:flex;gap:24px;flex-wrap:wrap;">
+  <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:14px;">
     {"".join([f'<div style="display:flex;flex-direction:column;gap:2px;"><div style="font-family:Space Mono,monospace;font-size:18px;font-weight:700;color:{T["gold"]};">{n}</div><div style="font-family:Space Mono,monospace;font-size:7px;letter-spacing:2px;text-transform:uppercase;color:{T["text4"]};">{l}</div></div>' for n,l in [("3","Story Options"),("Full","Prompt Chain"),("4K","Pixar Quality"),("9:16","Vertical")]]) }
   </div>
 </div>
@@ -912,7 +944,38 @@ if st.session_state.page == "video":
 
     st.markdown("<div style='padding:0 40px;'>", unsafe_allow_html=True)
 
-    # How it works
+    # ── CONTROL DECK (was sidebar) ──
+    gold_divider()
+    section_label("Configure Your Story")
+
+    cd1, cd2, cd3 = st.columns(3)
+    with cd1:
+        v_animal = st.selectbox("Character", [
+            "Puppy 🐶","Kitten 🐱","Baby Penguin 🐧","Baby Fox 🦊",
+            "Baby Panda 🐼","Baby Bunny 🐰","Baby Duck 🦆","Custom..."
+        ])
+        if v_animal == "Custom...":
+            v_animal = st.text_input("Describe your character", placeholder="e.g. tiny orange dragon")
+        v_story_type = st.selectbox("Story Type", [
+            "Funny","Emotional","Cute & Heartwarming",
+            "Adventure","Action","Mystery","Educational"
+        ])
+    with cd2:
+        v_duration = st.selectbox("Video Duration (seconds)", [8,16,24,30,40,60])
+        v_style = st.selectbox("Animation Style", [
+            "Pixar","Disney","DreamWorks","Anime","Chibi","Realistic"
+        ])
+    with cd3:
+        v_platform = st.selectbox("Platform", ["Instagram Reels","TikTok","YouTube Shorts"])
+        v_ending = st.selectbox("Ending Type", [
+            "Funny / Comedic","Emotional / Heartwarming",
+            "Twist / Unexpected","Happy","Random"
+        ])
+
+    st.markdown('<div class="generate-btn">', unsafe_allow_html=True)
+    generate_stories_btn = st.button("→ GENERATE STORIES", key="gen_stories", type="primary")
+    st.markdown('</div>', unsafe_allow_html=True)
+
     with st.expander("📖 HOW TO USE THIS — FULL WORKFLOW GUIDE"):
         st.markdown(f"""
 <div style="font-family:'Space Grotesk',sans-serif;font-size:13px;color:{T["text2"]};line-height:1.9;padding:8px 0;">
@@ -921,7 +984,7 @@ if st.session_state.page == "video":
 Select your character, story type, duration and style. The AI generates 3 different story options with viral scores, emotion scores, and retention estimates. Pick the one that resonates most.
 
 <br><br><strong style="color:{T["text"]};font-family:'Space Mono',monospace;font-size:10px;letter-spacing:2px;">STEP 2 — GET YOUR PRODUCTION PACKAGE</strong><br>
-Click "Use This Story" on your chosen option. The AI generates: character design sheet prompts (front/back/side/expressions), environment analysis, and a master First Frame prompt.
+Paste your chosen story below. The AI generates: character design sheet prompts (front/back/side/expressions), environment analysis, and a master First Frame prompt.
 
 <br><br><strong style="color:{T["text"]};font-family:'Space Mono',monospace;font-size:10px;letter-spacing:2px;">STEP 3 — GENERATE CHARACTER DESIGNS</strong><br>
 Take the character sheet prompt → paste into Midjourney or Ideogram → generate the character turnaround sheet. This keeps your character consistent across all clips.
@@ -940,20 +1003,48 @@ Never skip the last-frame screenshot. This is what prevents teleporting, object 
 </div>
 """, unsafe_allow_html=True)
 
-    # Check if we need to show generate stories button from sidebar
-    if 'generate_stories_btn' not in dir():
-        generate_stories_btn = False
+    # Trigger story generation
+    if generate_stories_btn:
+        v_animal_clean = v_animal.split(" ")[0] if " " in v_animal else v_animal
+        st.session_state["v_animal_stored"] = v_animal_clean
+        st.session_state["v_style_stored"] = v_style
+        st.session_state["v_duration_stored"] = v_duration
+        st.session_state["v_platform_stored"] = v_platform
 
-    # Story generation
-    if st.session_state.page == "video" and 'generate_stories_btn' in st.session_state:
-        pass
+        story_ph = st.empty()
+        story_ph.markdown(f"""
+<div style="background:{T["bg2"]};border:1px solid {T["gold"]}30;border-left:3px solid {T["gold"]};padding:24px;margin:20px 0;">
+<div style="font-family:Space Mono,monospace;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:{T["gold"]};margin-bottom:12px;">⚡ Generating viral story options...</div>
+<div style="font-family:Space Grotesk,sans-serif;font-size:13px;color:{T["text3"]};">Analyzing viral patterns for {v_animal_clean} {v_story_type} story...</div>
+</div>
+""", unsafe_allow_html=True)
 
-    # Trigger from sidebar button
-    if st.session_state.page == "video":
-        # We need to access the sidebar button state — it's already set above
-        pass
+        stories = generate_video_story(
+            animal=v_animal_clean,
+            story_type=v_story_type,
+            duration=v_duration,
+            style=v_style,
+            platform=v_platform,
+            ending_type=v_ending
+        )
+        st.session_state.video_stories = stories
+        st.session_state.video_package = None
 
-    if st.session_state.video_stories and st.session_state.page == "video":
+        story_ph.empty()
+        st.rerun()
+
+    # ── EMPTY STATE ──
+    if not st.session_state.video_stories:
+        st.markdown(f"""
+<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
+min-height:280px;border:1px dashed {T["rule2"]};margin:32px 0;gap:14px;">
+  <div style="font-size:38px;filter:grayscale(1);opacity:0.15;">🎥</div>
+  <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:3px;text-transform:uppercase;color:{T["text4"]};">Configure & Generate</div>
+  <div style="font-size:12px;color:{T["text4"]};font-family:'Space Mono',monospace;">Your story options will appear here</div>
+</div>""", unsafe_allow_html=True)
+
+    # ── STORY OPTIONS ──
+    if st.session_state.video_stories:
         gold_divider()
         section_label("Choose Your Story")
 
@@ -980,7 +1071,6 @@ Never skip the last-frame screenshot. This is what prevents teleporting, object 
         st.markdown('</div>', unsafe_allow_html=True)
 
         if gen_package_btn and story_input.strip():
-            # Load animal/style from session
             v_animal_stored = st.session_state.get("v_animal_stored", "Puppy")
             v_style_stored = st.session_state.get("v_style_stored", "Pixar")
             v_duration_stored = st.session_state.get("v_duration_stored", 24)
@@ -1025,7 +1115,6 @@ Never skip the last-frame screenshot. This is what prevents teleporting, object 
             pkg_ph.empty()
             st.rerun()
 
-        # Show package if generated
         if st.session_state.video_package:
             pkg = st.session_state.video_package
             gold_divider()
@@ -1078,7 +1167,6 @@ This establishes your entire scene. Use the generated image as the starting poin
 </div>
 """, unsafe_allow_html=True)
 
-                    # Download all prompts
                     all_prompts_text = f"REELMIND AI — VIDEO PROMPT CHAIN\n{'='*60}\n\n"
                     all_prompts_text += pkg.get("first_frame","") + "\n\n" + "="*60 + "\n\n"
                     for p in prompts:
@@ -1095,23 +1183,51 @@ This establishes your entire scene. Use the generated image as the starting poin
 
     st.markdown("</div>", unsafe_allow_html=True)
 
+    # GOLD CTA → back home
+    st.markdown("<div style='padding:0 40px;'>", unsafe_allow_html=True)
+    gold_divider()
+    st.markdown(f"""
+<div style="background:linear-gradient(135deg,{T["accent"]}10,transparent);border:1px solid {T["accent"]}30;border-left:3px solid {T["accent"]};padding:20px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+  <div>
+    <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:3px;text-transform:uppercase;color:{T["accent"]};margin-bottom:6px;">✍️ NEED WRITTEN CONTENT TOO?</div>
+    <div style="font-size:13px;color:{T["text3"]};">Generate captions, hashtags, and scripts for this same content in the Content Studio.</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+    st.markdown('<div class="generate-btn">', unsafe_allow_html=True)
+    if st.button("→ OPEN CONTENT STUDIO", key="goto_main_from_video"):
+        st.session_state.transition = ("main", T["accent"], "ENTERING CONTENT STUDIO")
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 # ══════════════════════════════════════════
 # ── PAGE: MAIN CONTENT GENERATOR ──
 # ══════════════════════════════════════════
 elif st.session_state.page == "main":
+    inject_premium_effects("255,75,43")
+    render_topbar(status_label="GEMINI LIVE")
+
+    # Home button
+    st.markdown("<div style='padding:14px 40px 0;'>", unsafe_allow_html=True)
+    st.markdown('<div class="home-btn-container">', unsafe_allow_html=True)
+    if st.button("← SHATTER BACK TO HOME", key="home_from_main"):
+        st.session_state.transition = ("home", T["accent"], "RETURNING HOME")
+        st.rerun()
+    st.markdown('</div></div>', unsafe_allow_html=True)
 
     # HERO
     st.markdown(f"""
-<div style="padding:40px 40px 28px;border-bottom:1px solid {T["rule"]};position:relative;overflow:hidden;">
+<div style="padding:24px 40px 28px;border-bottom:1px solid {T["rule"]};position:relative;overflow:hidden;">
   <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:4px;text-transform:uppercase;color:{T["accent"]};margin-bottom:10px;display:flex;align-items:center;gap:10px;">
     <span style="width:18px;height:1px;background:{T["accent"]};display:inline-block;"></span>
     AI Content Engine — Studio Grade
   </div>
-  <div style="font-family:'Fraunces',serif;font-size:58px;font-weight:900;font-style:italic;line-height:0.92;letter-spacing:-2px;color:{T["text"]};margin-bottom:14px;">
-    Reel<span style="color:{T["accent"]};">Mind</span>
-    <span style="color:{T["text4"]};">AI</span>
+  <div style="font-family:'Fraunces',serif;font-size:52px;font-weight:900;font-style:italic;line-height:0.92;letter-spacing:-2px;color:{T["text"]};margin-bottom:14px;">
+    Content<span style="color:{T["accent"]};"> Studio</span>
   </div>
-  <div style="font-size:13px;color:{T["text3"]};max-width:420px;line-height:1.6;margin-bottom:24px;">
+  <div style="font-size:13px;color:{T["text3"]};max-width:480px;line-height:1.6;margin-bottom:20px;">
     Generate scroll-stopping captions, hashtag stacks, viral scripts, and thumbnail prompts — powered by Gemini 2.5 Flash.
   </div>
   <div style="display:flex;gap:32px;flex-wrap:wrap;">
@@ -1120,12 +1236,69 @@ elif st.session_state.page == "main":
 </div>
 """, unsafe_allow_html=True)
 
+    st.markdown("<div style='padding:0 40px;'>", unsafe_allow_html=True)
+
+    # ── CONTROL DECK (was sidebar) ──
+    gradient_divider()
+    section_label("Configure Generation")
+
+    mode = st.radio("Mode", [
+        "⚡ Full Content Pack","🎯 Hook Ideas Only",
+        "📅 Content Series","🎠 Carousel Post",
+        "🧵 X/Twitter Thread","🔄 Content Repurposer"
+    ], horizontal=True)
+
+    cd1, cd2, cd3, cd4 = st.columns(4)
+    with cd1:
+        topic = st.text_input("Topic", placeholder="e.g. Villain arc, AI Tools, Gym motivation...")
+    with cd2:
+        niche = st.selectbox("Niche", [
+            "Dark Aesthetic / Motivation","Gaming","Anime & Manga",
+            "Fitness & Gym","Tech & AI","Finance & Investing",
+            "Horror & Thriller","Fashion & Lifestyle","Education",
+            "Movie Industry","Music & Artists","Business & Entrepreneurship",
+            "Luxury & Premium","Cars & Motorsport","Travel & Adventure","Food & Cooking"
+        ])
+    with cd3:
+        platform = st.selectbox("Platform", ["Instagram Reels","TikTok","YouTube Shorts"])
+    with cd4:
+        tone = st.selectbox("Tone", [
+            "Viral & Bold","Dark & Cinematic","Motivational & Intense",
+            "Minimal & Clean","Edgy & Controversial","Informative & Professional"
+        ])
+
+    num_posts = 5
+    original_content = ""
+    target_platform = "TikTok"
+
+    if "Series" in mode:
+        num_posts = st.selectbox("Posts in Series", [3,5,7])
+
+    if "Repurposer" in mode:
+        rc1, rc2 = st.columns([3,1])
+        with rc1:
+            original_content = st.text_area("Paste original content", height=80)
+        with rc2:
+            target_platform = st.selectbox("Repurpose for", ["TikTok","YouTube Shorts","X/Twitter","LinkedIn"])
+
+    st.markdown('<div class="generate-btn">', unsafe_allow_html=True)
+    generate_btn = st.button("→ GENERATE CONTENT", key="gen_main", type="primary")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    with st.expander("QUICK TIPS"):
+        st.markdown(f'<div style="font-family:Space Grotesk,sans-serif;font-size:12px;color:{T["text3"]};line-height:1.8;">→ Specific topics outperform generic<br>→ <strong style="color:{T["text2"]};">"Villain arc workout" &gt; "gym"</strong><br>→ Match tone to your content style<br>→ Use Hook mode to A/B test openings</div>', unsafe_allow_html=True)
+
+    if st.session_state.history:
+        with st.expander("RECENT GENERATIONS"):
+            for h in st.session_state.history[-4:]:
+                st.markdown(f'<div style="background:{T["bg3"]};border:1px solid {T["rule"]};padding:8px 10px;margin-bottom:3px;"><div style="font-size:12px;font-weight:500;color:{T["text"]};">{h["topic"][:40]}</div><div style="font-family:Space Mono,monospace;font-size:7px;color:{T["text4"]};">{h["niche"][:30]} · {h["time"]}</div></div>', unsafe_allow_html=True)
+
     # ── EMPTY STATE ──
     if not generate_btn:
         if not st.session_state.last_result:
             st.markdown(f"""
 <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
-min-height:420px;border:1px dashed {T["rule2"]};margin:32px 40px;gap:14px;">
+min-height:380px;border:1px dashed {T["rule2"]};margin:32px 0;gap:14px;">
   <div style="font-size:38px;filter:grayscale(1);opacity:0.15;">🎬</div>
   <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:3px;text-transform:uppercase;color:{T["text4"]};">Configure & Generate</div>
   <div style="font-size:12px;color:{T["text4"]};font-family:'Space Mono',monospace;">Your content will appear here</div>
@@ -1135,8 +1308,6 @@ min-height:420px;border:1px dashed {T["rule2"]};margin:32px 40px;gap:14px;">
         if not topic.strip():
             st.warning("Please enter a topic first.")
             st.stop()
-
-        st.markdown("<div style='padding:0 40px;'>", unsafe_allow_html=True)
 
         # Loading
         steps_ph = st.empty()
@@ -1300,7 +1471,7 @@ min-height:420px;border:1px dashed {T["rule2"]};margin:32px 40px;gap:14px;">
                 st.download_button("↓ IDEOGRAM PROMPT", ideogram, file_name="ideogram_prompt.txt", key="dl_id")
 
             gradient_divider()
-            full = f"REELMIND AI v4.0\nTopic:{topic} | Niche:{niche} | Platform:{platform}\n{'='*60}\n\n{result.get('raw','')}"
+            full = f"REELMIND AI v5.0\nTopic:{topic} | Niche:{niche} | Platform:{platform}\n{'='*60}\n\n{result.get('raw','')}"
             c1, c2 = st.columns(2)
             with c1:
                 st.download_button("↓ DOWNLOAD FULL PACK", full,
@@ -1309,7 +1480,7 @@ min-height:420px;border:1px dashed {T["rule2"]};margin:32px 40px;gap:14px;">
                 st.download_button("↓ DOWNLOAD RAW", result.get("raw",""),
                     file_name="reelmind_raw.txt", key="dl_raw")
 
-            # Gold CTA at bottom
+            # Gold CTA at bottom → video studio
             gradient_divider()
             st.markdown(f"""
 <div style="background:linear-gradient(135deg,{T["gold"]}10,transparent);border:1px solid {T["gold"]}30;border-left:3px solid {T["gold"]};padding:20px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
@@ -1321,7 +1492,7 @@ min-height:420px;border:1px dashed {T["rule2"]};margin:32px 40px;gap:14px;">
 """, unsafe_allow_html=True)
             st.markdown('<div class="gold-btn-container">', unsafe_allow_html=True)
             if st.button("🎥 OPEN VIDEO STORY CREATOR", key="goto_video_bottom"):
-                st.session_state.page = "video"
+                st.session_state.transition = ("video", T["gold"], "ENTERING VIDEO STUDIO")
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
@@ -1333,50 +1504,18 @@ min-height:420px;border:1px dashed {T["rule2"]};margin:32px 40px;gap:14px;">
                 st.download_button("↓ DOWNLOAD OUTPUT", raw_output,
                     file_name=f"reelmind_{topic[:20].replace(' ','_')}.txt", key="dl_other")
 
-        st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
 
 # ══════════════════════════════════════════
-# VIDEO STORY GENERATION TRIGGER
+# FOOTER (main + video pages)
 # ══════════════════════════════════════════
-# This handles the generate_stories_btn from the video page sidebar
-if st.session_state.page == "video" and 'generate_stories_btn' in dir() and generate_stories_btn:
-    # Store video settings in session
-    v_animal_clean = v_animal.split(" ")[0] if " " in v_animal else v_animal
-    st.session_state["v_animal_stored"] = v_animal_clean
-    st.session_state["v_style_stored"] = v_style
-    st.session_state["v_duration_stored"] = v_duration
-    st.session_state["v_platform_stored"] = v_platform
-
-    story_ph = st.empty()
-    story_ph.markdown(f"""
-<div style="background:{T["bg2"]};border:1px solid {T["gold"]}30;border-left:3px solid {T["gold"]};padding:24px;margin:20px 40px;">
-<div style="font-family:Space Mono,monospace;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:{T["gold"]};margin-bottom:12px;">⚡ Generating viral story options...</div>
-<div style="font-family:Space Grotesk,sans-serif;font-size:13px;color:{T["text3"]};">Analyzing viral patterns for {v_animal_clean} {v_story_type} story...</div>
-</div>
-""", unsafe_allow_html=True)
-
-    stories = generate_video_story(
-        animal=v_animal_clean,
-        story_type=v_story_type,
-        duration=v_duration,
-        style=v_style,
-        platform=v_platform,
-        ending_type=v_ending
-    )
-    st.session_state.video_stories = stories
-    st.session_state.video_package = None  # reset package on new story gen
-
-    story_ph.empty()
-    st.rerun()
-
-# ══════════════════════════════════════════
-# FOOTER
-# ══════════════════════════════════════════
-st.markdown(f"""
+if st.session_state.page in ("main","video"):
+    st.markdown(f"""
 <div style="padding:16px 40px;border-top:1px solid {T["rule"]};background:{T["bg2"]};
 display:flex;justify-content:space-between;align-items:center;margin-top:40px;">
   <div style="font-family:'Space Mono',monospace;font-size:8px;letter-spacing:2px;text-transform:uppercase;color:{T["text4"]};">
-    REELMIND AI — v4.0 — GEMINI 2.5 FLASH</div>
+    REELMIND AI — v5.0 — GEMINI 2.5 FLASH</div>
   <div style="font-family:'Space Mono',monospace;font-size:8px;color:{T["text4"]};background:{T["bg3"]};border:1px solid {T["rule2"]};padding:3px 8px;">
     BUILT BY SATVIK SHARMA · NIET 2024–28</div>
 </div>
