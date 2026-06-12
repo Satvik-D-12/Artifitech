@@ -869,15 +869,19 @@ if not st.session_state.sidebar_open:
     st.markdown(f"""
 <style>
 [data-testid="stSidebar"] {{ display:none !important; }}
+.reopen-fixed {{
+    position: fixed !important;
+    top: 8px !important;
+    left: 8px !important;
+    z-index: 9999 !important;
+}}
 </style>
 """, unsafe_allow_html=True)
-    col_reopen, _ = st.columns([1, 10])
-    with col_reopen:
-        st.markdown('<div class="sidebar-toggle-btn">', unsafe_allow_html=True)
-        if st.button("☰", key="open_sidebar"):
-            st.session_state.sidebar_open = True
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('<div class="reopen-fixed sidebar-toggle-btn">', unsafe_allow_html=True)
+    if st.button("☰", key="open_sidebar"):
+        st.session_state.sidebar_open = True
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════
 # ── PAGE: VIDEO STORY CREATOR ──
