@@ -54,7 +54,7 @@ def parse_sections(raw: str) -> dict:
 # FULL CONTENT PACK
 # ══════════════════════════════════════════
 def generate_full_content(topic: str, niche: str, platform: str, tone: str) -> dict:
-    prompt = f"""You are a world-class viral content strategist and professional scriptwriter.
+    prompt = f"""You are a world-class viral content strategist.
 
 Generate complete social media content for:
 TOPIC: {topic}
@@ -67,13 +67,13 @@ Return EXACTLY in this format:
 ==CAPTIONS==
 
 SHORT (under 50 words):
-[Write a complete punchy caption under 50 words. Use emojis naturally. End with a hook question or CTA. Make it feel human, not AI-generated.]
+[Write a complete punchy caption under 50 words. Use emojis naturally. End with a question or CTA.]
 
 MEDIUM (50-100 words):
-[Write a complete 50-100 word caption. Tell a mini story or share a real insight. Use emojis. Include a tension-building middle and a strong CTA at the end.]
+[Write a complete 50-100 word caption. Tell a mini story or share insight. Use emojis. Strong CTA at the end.]
 
 LONG (100-150 words):
-[Write a complete 100-150 word caption. Full narrative arc: hook opening, value delivery, emotional connection, and strong CTA. Use emojis strategically, not excessively.]
+[Write a complete 100-150 word caption. Full narrative arc with hook, value delivery, and strong CTA. Use emojis strategically.]
 
 ==HASHTAGS==
 
@@ -89,43 +89,27 @@ NICHE COMMUNITY (under 100K posts):
 ==SCRIPT==
 
 HOOK (0-3 seconds):
-[Write ONE complete, powerful sentence spoken or shown on screen. This must create immediate curiosity, shock, or emotional pull that makes someone stop scrolling. Write it as actual dialogue or an on-screen statement — not a keyword or topic description. Example: "Nobody told me this would change my life in 30 days."]
+[Write one complete, powerful sentence that will stop someone mid-scroll. It must create immediate curiosity, shock, or emotional pull. This is spoken or shown on screen as the very first thing viewers see. Make it impossible to ignore.]
 
 BODY (3-25 seconds):
-[Write 6-8 complete on-screen text lines. Each line is a full sentence under 10 words. Write them as a flowing spoken narrative where each line builds on the previous. Format each on its own line with a number:
-1. [full sentence line]
-2. [full sentence line]
-3. [full sentence line]
-4. [full sentence line]
-5. [full sentence line]
-6. [full sentence line]
-7. [full sentence line]
-8. [full sentence line]]
+[Write 6-8 complete on-screen text lines. Each line should be a complete thought under 8 words. Write them as a flowing narrative — each line builds on the previous one. Together they should deliver real value, tell a story, or build tension. Format each line on its own line with a dash: - line one here]
 
 CTA (25-30 seconds):
-[Write one complete, urgent call-to-action sentence. Tell viewers exactly what to do and why — follow, save, comment, share. Make it feel personal and time-sensitive, not generic.]
+[Write one specific, compelling call to action. Tell viewers exactly what to do and why — follow, save, comment, share. Make it feel urgent and personal, not generic.]
 
 SUGGESTED AUDIO:
-[Write 2-3 complete sentences describing the perfect music. Include genre, BPM range, mood, energy level, and why this specific sound profile matches the content and keeps viewers watching.]
+[Describe the perfect music in detail — genre, tempo (BPM range), mood, energy level, and why it matches this content. Example: "Lo-fi hip hop, 75-85 BPM, melancholic but hopeful, minimal beats with subtle piano — matches the reflective tone of the content and keeps viewers watching without distraction."]
 
 ==THUMBNAIL==
 
 IMAGE PROMPT:
-[Write a 65-85 word hyper-specific image generation prompt. Include: exact subject description with physical details, lighting style and direction, color palette, mood and emotion, composition and framing, camera angle, background detail, and rendering/art style. Be cinematic and specific enough to paste directly into Midjourney or Ideogram.]
+[Write a 60-80 word hyper-specific image generation prompt. Include: exact subject description, lighting style, color palette, mood, composition, camera angle, background detail, and rendering style. Be cinematic and specific.]
 
 STYLE KEYWORDS:
 [8 specific visual style descriptors separated by commas]
 
 COLOR PALETTE:
-[4 hex color codes with descriptive names. Example: #ff4b2b Volcanic Red, #1a1a2e Midnight Navy, #f0b429 Molten Gold, #0f0f0f Deep Void]
-
-Rules:
-- Match {tone} tone throughout every single section
-- Optimize specifically for {platform} algorithm behavior and viewer psychology
-- Every caption must feel human and natural — no AI-sounding phrases
-- Script hook must create immediate pattern interruption, not describe the topic
-- Script body lines must be complete spoken thoughts, never fragments or keywords
-- Hashtag strategy: spread across all three tiers for maximum algorithmic reach"""
+[4 hex color codes with descriptive names, e.g. #ff4b2b Volcanic Red, #1a1a2e Midnight Navy]"""
 
     raw = safe_generate(prompt)
     return parse_sections(raw)
@@ -134,38 +118,31 @@ Rules:
 # HOOK IDEAS
 # ══════════════════════════════════════════
 def generate_hooks(topic: str, niche: str, count: int = 5) -> str:
-    prompt = f"""You are a viral content hook specialist with deep expertise in scroll psychology.
+    prompt = f"""You are a viral content hook specialist.
 
-Generate {count} different powerful opening hooks for a {niche} reel about: {topic}
+Generate {count} different powerful hooks for a {niche} reel about: {topic}
 
-Each hook must be under 12 words and use a distinctly different psychological trigger.
-Write each as a complete spoken sentence or on-screen statement — not a fragment or keyword.
+Each hook must be under 10 words and use a different psychological trigger.
 
 Format exactly:
-
-HOOK 1 (Question):
-[complete hook sentence]
+HOOK 1 (Question): [hook]
 WHY IT WORKS: [one sentence psychological explanation]
-BEST PLATFORM: [where this hook style performs strongest]
+BEST PLATFORM: [where this hook style dominates]
 
-HOOK 2 (Shock/Controversy):
-[complete hook sentence]
-WHY IT WORKS: [one sentence explanation]
+HOOK 2 (Shock): [hook]
+WHY IT WORKS: [explanation]
 BEST PLATFORM: [platform]
 
-HOOK 3 (Bold Claim):
-[complete hook sentence]
-WHY IT WORKS: [one sentence explanation]
+HOOK 3 (Controversy): [hook]
+WHY IT WORKS: [explanation]
 BEST PLATFORM: [platform]
 
-HOOK 4 (Story/Personal):
-[complete hook sentence]
-WHY IT WORKS: [one sentence explanation]
+HOOK 4 (Story): [hook]
+WHY IT WORKS: [explanation]
 BEST PLATFORM: [platform]
 
-HOOK 5 (Number/Specificity):
-[complete hook sentence]
-WHY IT WORKS: [one sentence explanation]
+HOOK 5 (Number): [hook]
+WHY IT WORKS: [explanation]
 BEST PLATFORM: [platform]"""
     return safe_generate(prompt)
 
@@ -173,122 +150,98 @@ BEST PLATFORM: [platform]"""
 # CONTENT SERIES
 # ══════════════════════════════════════════
 def generate_series(topic: str, niche: str, platform: str, num_posts: int = 5) -> str:
-    prompt = f"""You are a viral content strategist who creates series that build audiences.
+    prompt = f"""You are a viral content strategist.
 
 Create a {num_posts}-post content series for {niche} on {platform} about: {topic}
 
-Each post must build on the previous one — design this like a Netflix series where viewers need to see the next episode.
+Each post builds on the previous — create a journey viewers NEED to follow.
 
-For each post provide:
+For each post:
 
 POST [N]:
-ANGLE: [unique sub-angle not covered in previous posts]
-HOOK: [complete opening line under 12 words — written as a spoken sentence]
-CAPTION PREVIEW: [first 2-3 complete sentences that draw viewers in immediately]
-KEY VALUE: [what viewers learn, feel, or gain from this post]
-HASHTAG THEME: [4 core hashtags most relevant to this specific post's angle]
-BEST DAY TO POST: [specific day and brief reason why]
-CLIFFHANGER: [one sentence that makes viewers need to see the next post in the series]"""
+ANGLE: [unique angle not covered in previous posts]
+HOOK: [opening hook under 10 words]
+CAPTION PREVIEW: [first 2 complete sentences that pull viewers in]
+KEY VALUE: [what viewers learn or feel]
+HASHTAG THEME: [4 core hashtags]
+BEST DAY TO POST: [day]
+CLIFFHANGER: [how this post makes viewers need the next one]"""
     return safe_generate(prompt)
 
 # ══════════════════════════════════════════
 # CAROUSEL
 # ══════════════════════════════════════════
 def generate_carousel(topic: str, niche: str, platform: str) -> str:
-    prompt = f"""You are a carousel content specialist. Create a high-save, high-share 7-slide carousel for {platform} about: {topic} in the {niche} niche.
+    prompt = f"""Create a 7-slide carousel for {platform} about: {topic} in the {niche} niche.
 
 SLIDE [N]:
-HEADLINE: [bold headline under 6 words — direct and punchy]
-BODY TEXT: [2-3 complete value-packed sentences. Real sentences, no fragments.]
-VISUAL DIRECTION: [specific design instruction with layout and color]
-EMOTION TARGET: [what this slide should make the viewer feel]
+HEADLINE: [bold headline under 6 words]
+BODY TEXT: [2-3 complete sentences of value]
+VISUAL DIRECTION: [specific design instruction]
+EMOTION: [what this slide should make the viewer feel]
 
-Slide 1 = pattern interrupt hook that stops the scroll.
-Slide 7 = strong save/share/follow CTA.
-
-After all slides add:
-COVER DESIGN: [detailed visual description of the cover image]
-POST CAPTION: [full 3-sentence caption for the carousel post itself]"""
+Slide 1 = pattern interrupt hook. Slide 7 = strong save/share CTA."""
     return safe_generate(prompt)
 
 # ══════════════════════════════════════════
 # THREAD
 # ══════════════════════════════════════════
 def generate_thread(topic: str, niche: str) -> str:
-    prompt = f"""You are a viral X/Twitter thread writer who consistently hits 1M+ impressions.
+    prompt = f"""Write a viral 8-tweet X/Twitter thread about: {topic} in the {niche} niche.
 
-Write a viral 8-tweet thread about: {topic} in the {niche} niche.
-
-Rules:
-- Every tweet is a complete thought under 280 characters
-- Tweet 1 must stop someone mid-scroll with a bold claim or pattern interrupt
-- Tweets 2-7 must deliver specific, actionable value
-- Each tweet naturally leads to the next
-- Tweet 8 drives follows, bookmarks, or replies
-
-TWEET 1 (Hook): [complete tweet — under 280 chars]
+TWEET 1 (Hook): [complete tweet under 280 chars — bold claim or pattern interrupt]
 TWEET 2: [complete tweet]
 TWEET 3: [complete tweet]
 TWEET 4: [complete tweet]
 TWEET 5: [complete tweet]
 TWEET 6: [complete tweet]
 TWEET 7: [complete tweet]
-TWEET 8 (CTA): [engagement CTA tweet]
-
-After the thread:
-THREAD TITLE: [what to save this thread as]
-BEST TIME TO POST: [day and time with reason]"""
+TWEET 8 (CTA): [engagement CTA tweet]"""
     return safe_generate(prompt)
 
 # ══════════════════════════════════════════
 # REPURPOSE
 # ══════════════════════════════════════════
 def repurpose_content(original: str, target_platform: str) -> str:
-    prompt = f"""You are a content repurposing expert who understands each platform's unique culture and algorithm.
+    prompt = f"""Repurpose this content for {target_platform}:
 
-Repurpose this content for {target_platform}:
-
-ORIGINAL CONTENT:
+ORIGINAL:
 {original}
 
-Analyze the core message and completely rewrite it natively for {target_platform} — not just an edit, a full transformation.
-
 REPURPOSED CAPTION:
-[Fully rewritten caption native to {target_platform}. Match the platform's tone, format, and character expectations completely.]
+[fully adapted caption native to {target_platform}]
 
 REPURPOSED HASHTAGS:
-[10 hashtags optimized specifically for {target_platform}'s tagging culture and discovery system]
+[platform-specific hashtags]
 
 REPURPOSED HOOK:
-[Opening line rewritten specifically for {target_platform}'s viewer scroll behavior and attention patterns]
+[platform-optimized opening]
 
 REPURPOSED CTA:
-[Call to action that fits {target_platform}'s specific engagement mechanics and what users naturally do on that platform]
+[platform-appropriate call to action]
 
 ADAPTATION NOTES:
-[3 specific observations about what changed and exactly why those changes improve performance on {target_platform}]"""
+[2-3 sentences on what changed and why]"""
     return safe_generate(prompt)
 
 # ══════════════════════════════════════════
 # STORYFLOW — STORY GENERATION
 # ══════════════════════════════════════════
-def generate_story(story_type: str, character: str, duration: int, style: str,
-                   platform: str, ending_type: str,
-                   custom_character: str = "", custom_story_idea: str = "") -> str:
+def generate_story(story_type, character, duration, style, platform, ending_type,
+                   custom_character="", custom_story_idea="") -> str:
     char = custom_character if custom_character else character
-    idea_ctx = f"\nCustom story idea to incorporate: {custom_story_idea}" if custom_story_idea else ""
+    idea_ctx = f"\nCustom idea: {custom_story_idea}" if custom_story_idea else ""
 
-    prompt = f"""You are a master viral AI animal story writer specializing in {style}-style animated {platform} videos.
+    prompt = f"""You are a master viral AI animal story writer for {style}-style animated {platform} videos.
 
-Create 3 COMPLETELY DIFFERENT story options for a {duration}-second {story_type} animated video.
-Character: {char}
-Ending style: {ending_type}{idea_ctx}
+Create 3 complete story options for a {duration}-second {story_type} animated video featuring: {char}
+Ending: {ending_type}{idea_ctx}
 
 For EACH story follow this EXACT structure:
 
-═══════════════════════════════════════════════════════
+═══════════════════════════════════
 STORY OPTION [N]
-═══════════════════════════════════════════════════════
+═══════════════════════════════════
 
 TITLE: [Catchy viral title]
 
@@ -299,130 +252,112 @@ HOOK STRENGTH: [X/100]
 ESTIMATED WATCH %: [X%]
 AI CONFIDENCE: [X%]
 
-LOGLINE: [One sentence that makes someone need to watch this video immediately. No spoilers.]
+LOGLINE: [One sentence that makes someone need to watch this immediately]
 
 FULL STORY BREAKDOWN:
 
 HOOK (0-3 seconds):
-[Describe the exact opening shot in cinematic detail. What is the camera angle? What is the character doing? What is their expression? What in the environment immediately creates curiosity or emotion? What makes someone stop scrolling?]
+[Describe exactly what happens — camera angle, character action, expression, environment. What makes someone stop scrolling instantly?]
 
 GOAL/CURIOSITY (3-8 seconds):
-[What does the character want more than anything? Show the moment they see it or decide to pursue it. Describe the visual that makes viewers immediately root for them. What is the camera doing?]
+[What does the character want? Why do viewers immediately root for them? Describe the visual that creates investment.]
 
 FIRST CONFLICT (8-{duration//3} seconds):
-[Describe in cinematic detail what goes wrong in the first attempt. Character reaction shot — what does their face do? Body language? How does the environment interact with them? What makes viewers laugh or feel bad for the character?]
+[What goes wrong? Describe the problem in cinematic detail — character reaction, facial expression, body language, environment interaction.]
 
 ESCALATION ({duration//3}-{2*duration//3} seconds):
-[How does it get worse? Describe the full cause-and-effect chain. Each failure leads naturally to the next. Include the peak funny or emotional moment. Describe character expressions and reactions in full detail.]
+[How does it get worse? Describe the cause-and-effect chain. Each failure leads naturally to the next. Include the funny or emotional peak moment.]
 
 TWIST/HELP ({2*duration//3}-{duration-5} seconds):
-[The unexpected turn. Who or what helps? What surprising element appears? How does the character react to this unexpected help? Describe the hope and anticipation building.]
+[The unexpected turn. Who helps? What clever solution appears? What surprises the viewer?]
 
 PAYOFF ({duration-5}-{duration} seconds):
-[The complete {ending_type} ending. Describe the final 5 seconds in full cinematic detail — character expression, body language, environment, lighting, camera pull-back or close-up, the specific emotional peak. What makes viewers say "aww" or burst out laughing?]
+[The {ending_type} ending in full detail. Exact visuals, character expressions, the emotional peak. What makes viewers say "aww" or laugh out loud?]
 
-ALL SCENE OBJECTS (must ALL be visible in Frame 1):
-[List every prop, supporting character, and environment element that appears anywhere in the story. This list is used to plant them all in Frame 1.]
+ALL SCENE OBJECTS (must all appear in Frame 1):
+[Comma-separated list of every prop, character, and environment element]
 
 VIRALITY HOOK:
-[Why will people share this? What specific emotion does it trigger? What makes someone tag their friend?]
+[Why will people share this? What specific emotion does it trigger?]
 
-═══════════════════════════════════════════════════════
+═══════════════════════════════════
 
-All 3 stories must have completely different dramatic structures and emotional arcs. Do not repeat similar plots."""
-
+Generate all 3 stories. Make each completely different in approach."""
     return safe_generate(prompt)
 
 # ══════════════════════════════════════════
 # STORYFLOW — CHARACTER SHEET
 # ══════════════════════════════════════════
 def generate_character_sheet(character: str, style: str, story_context: str = "") -> str:
-    prompt = f"""You are a professional character designer for {style} 3D animation productions.
+    prompt = f"""You are a professional character designer for {style} 3D animation.
 
-Create a complete character design package for: {character}
-Animation style: {style}
-Story context: {story_context if story_context else "Animated short film for social media"}
+Generate a complete character design package for: {character}
+Style: {style}
+Context: {story_context if story_context else "Animated short film"}
 
 1. MASTER CHARACTER SHEET PROMPT:
-[Write a 180-220 word image generation prompt for a professional character turnaround sheet.
-Include highly specific physical features: exact fur/skin color codes if possible, eye shape and color, size proportions, distinguishing features, accessories, and how the design conveys personality.
-Structure it as:
-"{character} character model sheet, professional animation turnaround, multiple angles.
-Top Row (Turnaround Views): Full body, neutral standing pose repeated from: front view, side view left, back view, side view right, three-quarter view.
-Bottom Row (Reference Details): A Character Details grid with close-up macro shots of eyes, hands/paws, and key features. A Color Palette box with labeled swatches and specific descriptions. An Expression Reference grid showing 6 distinct facial expressions: Happy, Excited, Sad, Curious, Determined, Surprised.
-Art style: {style} 3D animation quality, clean white studio background, warm professional lighting, 4K render quality, high detail, smooth shading.
-[Then add all specific character description details here]"]
+[150-200 word image generation prompt for a professional character turnaround sheet.
+Include: specific physical features, fur/skin texture, eye details, colors, accessories, personality in design.
+Format: "[Character] character model sheet, animation turnaround, multiple angles.
+Top Row: Front, left side, back, right side, 3/4 view — all neutral standing pose.
+Bottom Row: Close-up details grid, color palette with hex codes, expressions grid (Happy, Excited, Sad, Curious, Determined, Surprised).
+{style} 3D animation, clean white background, warm studio lighting, 4K quality."]
 
-2. INDIVIDUAL EXPRESSION PROMPTS (for generating separate close-up expression images):
-HAPPY: [specific close-up face prompt]
-EXCITED: [specific close-up face prompt]
-SAD: [specific close-up face prompt]
-CURIOUS: [specific close-up face prompt]
-DETERMINED: [specific close-up face prompt]
-SURPRISED: [specific close-up face prompt]
+2. INDIVIDUAL EXPRESSION PROMPTS:
+HAPPY: [specific expression prompt]
+EXCITED: [specific expression prompt]
+SAD: [specific expression prompt]
+CURIOUS: [specific expression prompt]
+DETERMINED: [specific expression prompt]
+SURPRISED: [specific expression prompt]
 
 3. CHARACTER BIBLE:
-[200-word description covering: personality traits and how they show physically, signature movement patterns and quirks, what makes them visually memorable and distinct, color theory behind their design, and how their appearance serves the {story_context} story.]"""
+[150-word description of personality, movement style, quirks, and what makes them visually memorable]"""
     return safe_generate(prompt)
 
 # ══════════════════════════════════════════
 # STORYFLOW — FRAME 1
 # ══════════════════════════════════════════
-def generate_frame1_prompt(story_summary: str, character: str,
-                            scene_objects: str, style: str, platform: str) -> str:
+def generate_frame1_prompt(story_summary, character, scene_objects, style, platform) -> str:
     aspect = "vertical 9:16" if platform in ["Instagram Reels","TikTok","YouTube Shorts"] else "horizontal 16:9"
-    prompt = f"""You are a master cinematographer and visual director for {style} animated films.
+    prompt = f"""You are a master cinematographer for {style} animated films.
 
-Create the perfect Frame 1 establishing shot for this story:
+Create the perfect Frame 1 establishing shot for:
 STORY: {story_summary}
-MAIN CHARACTER: {character}
-ALL STORY OBJECTS TO PLANT: {scene_objects}
-ANIMATION STYLE: {style}
-ASPECT RATIO: {aspect}
+CHARACTER: {character}
+ALL OBJECTS: {scene_objects}
+STYLE: {style}
+ASPECT: {aspect}
 
 FRAME 1 MASTER PROMPT:
-[Write a complete 220-260 word image generation prompt.
-
-Start with the character in the foreground — describe their exact position, pose, and starting expression.
-Plant EVERY story object from the list somewhere logically in the scene — even background objects.
-Establish the camera angle and height that will work for all future story moments.
-Set the lighting, time of day, and overall mood.
-Describe the full environment in detail.
-
-The prompt must end with: "{style} 3D animation, 4K cinematic quality, {aspect}, professional studio lighting, high detail, sharp focus, clean render"
-
-Structure: [character description and position] [environment description] [object placements and positions] [lighting and mood] [technical specs]]
+[Write a complete 200-250 word image generation prompt.
+Start with the character in foreground. Plant ALL story objects visibly even if minor.
+Set the camera angle that works for the entire story.
+Establish lighting and mood.
+End with: "{style} 3D animation, 4K cinematic quality, {aspect}, professional studio lighting, high detail"]
 
 OBJECT PLACEMENT GUIDE:
-[For each story object, describe exactly where it is in the scene and why that placement makes visual sense for the story]
+[Where each object sits and why it makes visual sense]
 
-CAMERA SPECIFICATION:
-[Camera height: eye-level / low angle / high angle — and why this choice works for the entire story]
-[Focal length feel: wide / medium / close — and what this establishes]
-[Framing: what the character occupies in frame and how much negative space exists for action]
+CAMERA NOTES:
+[Height, angle, focal length, and why this works for the full story]
 
-CONTINUITY ANCHOR LIST:
-[List every specific visual element that MUST remain identical across ALL future prompts:
-- Camera angle and height
-- Character physical appearance
-- Each object's exact position
-- Light direction and color
-- Environment specific details]"""
+CONTINUITY CHECKLIST:
+[Every element that must stay consistent across ALL future prompts]"""
     return safe_generate(prompt)
 
 # ══════════════════════════════════════════
 # STORYFLOW — PROMPT CHAIN
-# Fully flexible: any duration, any segment size
+# (Fully flexible: user picks duration + segment size)
 # ══════════════════════════════════════════
-def generate_prompt_chain(story_breakdown: str, character: str, scene_objects: str,
-                           duration: int, segment_size: int,
-                           style: str, platform: str) -> str:
+def generate_prompt_chain(story_breakdown, character, scene_objects,
+                           duration: int, segment_size: int, style, platform) -> str:
     num_prompts = duration // segment_size
     aspect = "vertical 9:16" if platform in ["Instagram Reels","TikTok","YouTube Shorts"] else "horizontal 16:9"
 
-    prompt = f"""You are a master AI video prompt engineer specializing in {style} animated story continuity.
+    prompt = f"""You are a master AI video prompt engineer for {style} animated story continuity.
 
-Create a COMPLETE {num_prompts}-prompt video chain for this story.
+Create a COMPLETE {num_prompts}-prompt video chain.
 
 STORY: {story_breakdown}
 CHARACTER: {character}
@@ -430,45 +365,42 @@ ALL SCENE OBJECTS: {scene_objects}
 TOTAL DURATION: {duration} seconds
 SEGMENTS: {num_prompts} prompts × {segment_size} seconds each
 STYLE: {style}
-ASPECT RATIO: {aspect}
+ASPECT: {aspect}
 
-Generate ALL {num_prompts} prompts. Each prompt must be 200-260 words and describe physical motion in extreme detail — not keywords.
+Generate ALL {num_prompts} prompts in this EXACT format:
 
-Use EXACTLY this format for each:
+═══════════════════════════════════════════════
+PROMPT [N] — [SCENE NAME] ({segment_size} SECONDS)
+═══════════════════════════════════════════════
 
-═══════════════════════════════════════════════════════
-PROMPT [N] of {num_prompts} — [SCENE NAME] ({segment_size} SECONDS)
-═══════════════════════════════════════════════════════
+SCENE GOAL: [What story beat does this segment accomplish?]
 
-STORY BEAT: [What narrative moment does this segment accomplish?]
-
-CONTINUITY LOCK (must match end of previous prompt):
-Character position: [exact location in frame]
-Character expression: [emotion at start of this clip]
-Camera: [angle and height — must match established shot]
-Key objects: [where each story object sits]
-Lighting: [matches established lighting]
+CONTINUITY LOCK:
+- Character: [exact appearance description]
+- Position: [where in frame]
+- Expression: [emotion at start]
+- Camera: [angle and height]
+- All objects: [list with positions]
+- Lighting: [description]
 
 FULL VIDEO PROMPT:
-[For PROMPT 1: Begin with "Ultra-cute {style}-quality 3D animated {character}. 4K cinematic quality. {aspect}. One continuous camera shot. No scene changes. No cuts. Same environment throughout. No teleporting. No object spawning."
-For PROMPT 2 through {num_prompts}: Begin with "IMPORTANT: Start from the EXACT frame shown in the attached screenshot. Match everything precisely — character appearance, fur color, eye shape, accessories, exact position in frame, expression, camera angle and height, lighting direction and color, all object positions. Continue seamlessly. No cuts. No new objects. No environment changes. Same shot."
+[Write 200-250 words. 
+Start PROMPT 1 with: "Ultra-cute {style}-quality 3D animated {character}. 4K cinematic quality. {aspect}. One continuous camera shot. No scene changes. No cuts. No teleporting. Same environment throughout."
+Start PROMPTS 2+ with: "IMPORTANT: Start from the EXACT frame shown in the attached screenshot. Match everything exactly — character appearance, expression, camera angle, lighting, all object positions. Continue seamlessly. No cuts. No new objects. Same environment. Same shot."
+Then write second-by-second action:
+0-{segment_size//4} sec: [exact visual action]
+{segment_size//4}-{segment_size//2} sec: [exact visual action]
+{segment_size//2}-{3*segment_size//4} sec: [exact visual action]
+{3*segment_size//4}-{segment_size} sec: [exact visual action with end frame freeze description]]
 
-Then describe second-by-second physical action in cinematic detail:
-0-{segment_size//4}s: [Exact physical action — describe movement, expression change, body language shift, environment interaction. Not "puppy jumps" but "puppy crouches low, hind legs tensing, ears flattening, eyes wide with determination, then pushes off with full force toward the balloon..."]
-{segment_size//4}-{segment_size//2}s: [Continue with same specificity]
-{segment_size//2}-{3*segment_size//4}s: [Continue with same specificity]
-{3*segment_size//4}-{segment_size}s: [Action leading into stable end frame, describe final freeze position clearly]]
-
-END FRAME (for screenshot):
-[Describe the exact last frame: character pose, expression, position in frame, all objects visible, stable composition — this is what gets screenshotted for the next prompt]
+END FRAME:
+[Describe the exact last frame — character pose, expression, position, all objects visible, stable and ready for screenshot]
 
 MOTION PHYSICS:
-[Cause → Effect chain for this segment's key actions]
+[Cause → Effect chain for this segment]
 
-═══════════════════════════════════════════════════════
+═══════════════════════════════════════════════
 
-Generate all {num_prompts} prompts completely. Every prompt ends on a STABLE FRAME.
-The final prompt must deliver the complete story payoff in full cinematic detail.
-Make each segment feel like a natural continuation — no jarring story jumps."""
-
+Generate all {num_prompts} prompts. Every prompt ends on a STABLE FRAME.
+The final prompt delivers the complete story payoff."""
     return safe_generate(prompt)
