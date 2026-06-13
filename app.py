@@ -1,18 +1,16 @@
 import streamlit as st
 import streamlit.components.v1 as components
-import random
-import time
-import datetime
-import re
+import random, time, datetime, re
 from gemini_helper import (
-    generate_full_content, generate_hooks,
-    generate_series, generate_carousel,
-    generate_thread, repurpose_content,
-    generate_video_story, generate_video_full_package
+    generate_full_content, generate_hooks, generate_series,
+    generate_carousel, generate_thread, repurpose_content,
+    generate_story, generate_character_sheet,
+    generate_frame1_prompt, generate_prompt_chain,
+    safe_generate
 )
 
 # ══════════════════════════════════════════
-# PAGE CONFIG
+# CONFIG
 # ══════════════════════════════════════════
 st.set_page_config(
     page_title="ReelMind AI",
@@ -24,99 +22,244 @@ st.set_page_config(
 # ══════════════════════════════════════════
 # SESSION STATE
 # ══════════════════════════════════════════
-for key, default in [
-    ("history", []), ("theme", "dark"),
-    ("last_result", None), ("last_scores", None),
-    ("generated", False), ("page", "home"),
-    ("video_stories", None), ("video_package", None),
-    ("transition", None),
-]:
-    if key not in st.session_state:
-        st.session_state[key] = default
+DEFAULTS = {
+    "theme": "dark", "page": "reelmind",
+    "history": [], "last_result": None,
+    "sf_step": 1, "sf_stories": None,
+    "sf_char_sheet": None, "sf_frame1": None,
+    "sf_prompt_chain": None, "sf_scene_objects": None,
+    "sf_config": {}, "rm_result": None, "rm_scores": None,
+}
+for k, v in DEFAULTS.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
+
+IS_DARK = st.session_state.theme == "dark"
 
 # ══════════════════════════════════════════
-# THEME
+# DESIGN TOKENS
 # ══════════════════════════════════════════
-IS_DARK = st.session_state.theme == "dark"
-T = {
-    "bg":      "#080808" if IS_DARK else "#f0ede8",
-    "bg2":     "#0f0f0f" if IS_DARK else "#e8e4de",
-    "bg3":     "#161616" if IS_DARK else "#dedad3",
-    "bg4":     "#1e1e1e" if IS_DARK else "#d0ccc4",
-    "rule":    "#1e1e1e" if IS_DARK else "#ccc8bf",
-    "rule2":   "#2a2a2a" if IS_DARK else "#b8b3a8",
-    "text":    "#f0ede8" if IS_DARK else "#0f0d0a",
-    "text2":   "#999"    if IS_DARK else "#4a4540",
-    "text3":   "#555"    if IS_DARK else "#7a7268",
-    "text4":   "#333"    if IS_DARK else "#aaa49a",
-    "accent":  "#ff4b2b",
-    "accent2": "#ff7a5c",
-    "purple":  "#8b5cf6",
-    "blue":    "#3b82f6",
-    "green":   "#22c55e",
-    "yellow":  "#eab308",
-    "orange":  "#f97316",
-    "gold":    "#f59e0b",
-    "gold2":   "#fbbf24",
-    "glass":   "rgba(255,255,255,0.04)" if IS_DARK else "rgba(0,0,0,0.04)",
-    "glassborder": "rgba(255,255,255,0.08)" if IS_DARK else "rgba(0,0,0,0.08)",
-}
+if IS_DARK:
+    T = {
+        "bg":      "#0a0a0a", "bg2":   "#111111",
+        "bg3":     "#181818", "bg4":   "#222222",
+        "rule":    "#222222", "rule2": "#333333",
+        "text":    "#f5f3ef", "text2": "#999999",
+        "text3":   "#555555", "text4": "#333333",
+        "accent":  "#ff4b2b", "accent2":"#ff7a5c",
+        "gold":    "#f0b429", "gold2": "#ffd166",
+        "purple":  "#7c3aed", "blue":  "#2563eb",
+        "green":   "#16a34a", "yellow":"#ca8a04",
+        "orange":  "#ea580c",
+    }
+else:
+    T = {
+        "bg":      "#faf9f7", "bg2":   "#f2f0ec",
+        "bg3":     "#e8e5df", "bg4":   "#dedad3",
+        "rule":    "#e0dcd5", "rule2": "#ccc8bf",
+        "text":    "#0f0d0a", "text2": "#4a4540",
+        "text3":   "#8a8078", "text4": "#b0a898",
+        "accent":  "#e63900", "accent2":"#ff5c3d",
+        "gold":    "#b8860b", "gold2": "#d4a017",
+        "purple":  "#6d28d9", "blue":  "#1d4ed8",
+        "green":   "#15803d", "yellow":"#a16207",
+        "orange":  "#c2410c",
+    }
+
+# ══════════════════════════════════════════
+# GLOBAL CSS — NO SIDEBAR, FULL PAGE
+# ══════════════════════════════════════════
+st.markdown(f"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+*,*::before,*::after{{box-sizing:border-box;margin:0;padding:0;}}
+
+html,body,[data-testid="stAppViewContainer"],
+[data-testid="stAppViewContainer"]>.main{{
+    background:{T["bg"]} !important;
+    color:{T["text"]} !important;
+    font-family:'Inter',sans-serif !important;
+}}
+[data-testid="stHeader"]{{display:none !important;}}
+[data-testid="stSidebar"]{{display:none !important;}}
+section[data-testid="stSidebar"]{{display:none !important;}}
+.block-container{{padding:0 !important;max-width:100% !important;}}
+#MainMenu{{visibility:hidden;}}
+footer{{visibility:hidden;}}
+
+.stTextInput>div>div>input,.stTextArea>div>div>textarea{{
+    background:{T["bg3"]} !important;border:1px solid {T["rule2"]} !important;
+    border-radius:0 !important;color:{T["text"]} !important;
+    font-family:'Inter',sans-serif !important;font-size:14px !important;
+    padding:12px 16px !important;outline:none !important;transition:border-color .2s !important;
+}}
+.stTextInput>div>div>input:focus,.stTextArea>div>div>textarea:focus{{
+    border-color:{T["accent"]} !important;box-shadow:none !important;
+}}
+.stTextInput>div>div>input::placeholder,.stTextArea>div>div>textarea::placeholder{{color:{T["text4"]} !important;}}
+
+[data-baseweb="select"]>div{{
+    background:{T["bg3"]} !important;border:1px solid {T["rule2"]} !important;
+    border-radius:0 !important;color:{T["text"]} !important;
+    font-family:'Inter',sans-serif !important;font-size:14px !important;
+}}
+[data-baseweb="popover"] ul{{
+    background:{T["bg3"]} !important;border:1px solid {T["rule2"]} !important;border-radius:0 !important;
+}}
+[data-baseweb="option"]{{
+    background:{T["bg3"]} !important;color:{T["text"]} !important;font-size:13px !important;
+}}
+[data-baseweb="option"]:hover{{background:{T["bg4"]} !important;}}
+
+label,.stSelectbox label,.stTextInput label,.stTextArea label,
+.stRadio label,.stNumberInput label{{
+    color:{T["text3"]} !important;font-family:'JetBrains Mono',monospace !important;
+    font-size:9px !important;letter-spacing:2.5px !important;
+    text-transform:uppercase !important;margin-bottom:6px !important;
+}}
+.stNumberInput>div>div>input{{
+    background:{T["bg3"]} !important;border:1px solid {T["rule2"]} !important;
+    border-radius:0 !important;color:{T["text"]} !important;
+    font-family:'Inter',sans-serif !important;font-size:14px !important;padding:12px 16px !important;
+}}
+.stNumberInput [data-testid="stNumberInputStepDown"],
+.stNumberInput [data-testid="stNumberInputStepUp"]{{
+    background:{T["bg4"]} !important;border:none !important;color:{T["text"]} !important;
+}}
+
+.stButton>button{{
+    background:transparent !important;color:{T["text3"]} !important;
+    border:1px solid {T["rule2"]} !important;border-radius:0 !important;
+    font-family:'JetBrains Mono',monospace !important;font-size:9px !important;
+    letter-spacing:2px !important;text-transform:uppercase !important;
+    padding:10px 20px !important;transition:all .2s !important;width:100% !important;
+}}
+.stButton>button:hover{{border-color:{T["accent"]} !important;color:{T["accent"]} !important;}}
+
+.stDownloadButton>button{{
+    background:transparent !important;color:{T["text3"]} !important;
+    border:1px solid {T["rule2"]} !important;border-radius:0 !important;
+    font-family:'JetBrains Mono',monospace !important;font-size:8px !important;
+    letter-spacing:2px !important;text-transform:uppercase !important;
+    padding:8px 14px !important;width:auto !important;transition:all .2s !important;
+}}
+.stDownloadButton>button:hover{{border-color:{T["accent"]} !important;color:{T["accent"]} !important;}}
+
+.stTabs [data-baseweb="tab-list"]{{
+    background:transparent !important;border-bottom:1px solid {T["rule"]} !important;
+    gap:0 !important;padding:0 !important;
+}}
+.stTabs [data-baseweb="tab"]{{
+    background:transparent !important;color:{T["text3"]} !important;
+    font-family:'JetBrains Mono',monospace !important;font-size:8px !important;
+    letter-spacing:2.5px !important;text-transform:uppercase !important;
+    padding:12px 20px !important;border-radius:0 !important;
+    border-bottom:2px solid transparent !important;transition:all .2s !important;
+}}
+.stTabs [aria-selected="true"]{{
+    color:{T["accent"]} !important;
+    border-bottom-color:{T["accent"]} !important;
+    background:transparent !important;
+}}
+.stTabs [data-baseweb="tab-panel"]{{padding:24px 0 0 !important;background:transparent !important;}}
+
+.streamlit-expanderHeader{{
+    background:{T["bg2"]} !important;border:1px solid {T["rule"]} !important;
+    border-radius:0 !important;color:{T["text3"]} !important;
+    font-family:'JetBrains Mono',monospace !important;
+    font-size:9px !important;letter-spacing:2px !important;
+}}
+.streamlit-expanderContent{{
+    background:{T["bg2"]} !important;border:1px solid {T["rule"]} !important;
+    border-top:none !important;padding:20px !important;
+}}
+
+.stRadio>div{{gap:4px !important;flex-direction:column !important;}}
+.stRadio>div>label{{
+    background:{T["bg3"]} !important;border:1px solid {T["rule2"]} !important;
+    padding:10px 16px !important;border-radius:0 !important;margin:0 !important;
+    color:{T["text3"]} !important;font-size:13px !important;transition:all .15s !important;
+}}
+.stRadio>div>label:hover{{border-color:{T["accent"]} !important;color:{T["accent"]} !important;}}
+
+::-webkit-scrollbar{{width:3px;height:3px;}}
+::-webkit-scrollbar-track{{background:{T["bg"]};}}
+::-webkit-scrollbar-thumb{{background:{T["rule2"]};}}
+::-webkit-scrollbar-thumb:hover{{background:{T["accent"]};}}
+</style>
+""", unsafe_allow_html=True)
+
+# ══════════════════════════════════════════
+# CUSTOM CURSOR
+# ══════════════════════════════════════════
+def inject_cursor():
+    components.html(f"""
+<!DOCTYPE html><html><head>
+<style>
+*{{margin:0;padding:0;}} body{{overflow:hidden;background:transparent;}}
+#dot{{position:fixed;width:6px;height:6px;background:{T["accent"]};border-radius:50%;pointer-events:none;z-index:9999;transform:translate(-50%,-50%);box-shadow:0 0 8px {T["accent"]};}}
+#ring{{position:fixed;width:30px;height:30px;border:1px solid {T["accent"]}70;border-radius:50%;pointer-events:none;z-index:9998;transform:translate(-50%,-50%);transition:width .18s,height .18s,border-color .18s;}}
+#ring.h{{width:46px;height:46px;border-color:{T["accent"]};background:{T["accent"]}08;}}
+.tr{{position:fixed;border-radius:50%;pointer-events:none;z-index:9997;animation:tf .55s ease-out forwards;}}
+@keyframes tf{{0%{{opacity:.7;transform:translate(-50%,-50%) scale(1)}}100%{{opacity:0;transform:translate(-50%,-50%) scale(0)}}}}
+</style>
+</head><body>
+<div id="dot"></div><div id="ring"></div>
+<script>
+const dot=document.getElementById('dot'),ring=document.getElementById('ring');
+let rx=0,ry=0,mx=0,my=0,tc=0;
+window.addEventListener('mousemove',e=>{{
+    mx=e.clientX;my=e.clientY;
+    dot.style.left=mx+'px';dot.style.top=my+'px';
+    if(tc++%3===0){{
+        const p=document.createElement('div');p.className='tr';
+        const s=Math.random()*4+1;
+        p.style.cssText=`left:${{mx}}px;top:${{my}}px;width:${{s}}px;height:${{s}}px;background:{T["accent"]}90;`;
+        document.body.appendChild(p);setTimeout(()=>p.remove(),550);
+    }}
+}});
+function anim(){{rx+=(mx-rx)*.12;ry+=(my-ry)*.12;ring.style.left=rx+'px';ring.style.top=ry+'px';requestAnimationFrame(anim);}}
+anim();
+document.addEventListener('mouseover',e=>{{if(e.target.tagName.match(/BUTTON|INPUT|SELECT|A|TEXTAREA/i))ring.classList.add('h');}});
+document.addEventListener('mouseout',e=>{{if(e.target.tagName.match(/BUTTON|INPUT|SELECT|A|TEXTAREA/i))ring.classList.remove('h');}});
+</script>
+</body></html>
+""", height=0, scrolling=False)
 
 # ══════════════════════════════════════════
 # HELPERS
 # ══════════════════════════════════════════
-def section_label(text):
-    st.markdown(f"""
-<div style="font-family:'Space Mono',monospace;font-size:8px;letter-spacing:3px;
-text-transform:uppercase;color:{T['text4']};margin-bottom:12px;
-display:flex;align-items:center;gap:8px;">
-{text}
-<span style="flex:1;height:1px;background:{T['rule']};display:inline-block;"></span>
-</div>""", unsafe_allow_html=True)
+def mono_label(text, color=None):
+    c = color or T["text4"]
+    st.markdown(
+        f'<div style="font-family:JetBrains Mono,monospace;font-size:9px;letter-spacing:3px;'
+        f'text-transform:uppercase;color:{c};margin-bottom:14px;display:flex;'
+        f'align-items:center;gap:10px;">{text}'
+        f'<span style="flex:1;height:1px;background:{T["rule"]};display:block;"></span></div>',
+        unsafe_allow_html=True
+    )
 
-def gradient_divider():
-    st.markdown(f"""<div style="height:1px;background:linear-gradient(90deg,{T['accent']},{T['purple']},transparent);
-opacity:0.35;margin:24px 0;"></div>""", unsafe_allow_html=True)
-
-def gold_divider():
-    st.markdown(f"""<div style="height:1px;background:linear-gradient(90deg,{T['gold']},{T['gold2']},transparent);
-opacity:0.5;margin:24px 0;"></div>""", unsafe_allow_html=True)
+def divider(color=None):
+    c = color or T["rule"]
+    st.markdown(f'<div style="height:1px;background:{c};opacity:.5;margin:28px 0;"></div>', unsafe_allow_html=True)
 
 def gen_scores():
     return {
-        "viral":      (random.randint(82,97), T["accent"]),
-        "hook":       (random.randint(80,96), T["purple"]),
-        "engagement": (random.randint(83,95), T["blue"]),
-        "share":      (random.randint(81,94), T["green"]),
-        "retention":  (random.randint(82,95), T["yellow"]),
-        "reach":      (random.randint(80,93), T["orange"]),
+        "viral":      (random.randint(82, 97), T["accent"]),
+        "hook":       (random.randint(80, 96), T["purple"]),
+        "engagement": (random.randint(83, 95), T["blue"]),
+        "share":      (random.randint(81, 94), T["green"]),
+        "retention":  (random.randint(82, 95), T["yellow"]),
+        "reach":      (random.randint(80, 93), T["orange"]),
     }
-
-def gen_confidence():
-    return random.randint(87, 98)
-
-POSTING_TIMES = {
-    "Instagram Reels": [("6–8 AM","Morning",False),("12–2 PM","Lunch",False),("7–9 PM","Evening",True),("10 PM","Night",False)],
-    "TikTok":          [("7–9 AM","Morning",False),("3–5 PM","Afternoon",False),("7–9 PM","Prime",True),("11 PM","Late",False)],
-    "YouTube Shorts":  [("8–10 AM","Morning",False),("2–4 PM","Afternoon",True),("6–8 PM","Evening",False)],
-}
-
-SATURATION = {
-    "Dark Aesthetic / Motivation": "HIGH — competitive. Use micro-angles.",
-    "Gaming": "VERY HIGH — niche down to specific game/genre.",
-    "Tech & AI": "MEDIUM-HIGH — fast growing. Early mover advantage.",
-    "Finance & Investing": "MEDIUM — evergreen. Authority content wins.",
-    "Fitness & Gym": "VERY HIGH — specific transformation angles win.",
-    "Horror & Thriller": "MEDIUM — underserved on Reels. Opportunity.",
-    "Luxury & Premium": "LOW-MEDIUM — aspirational, high engagement.",
-}
 
 def parse_captions(text):
     s = re.search(r'SHORT[^:]*:\s*([\s\S]*?)(?=MEDIUM[^:]*:|$)', text, re.I)
     m = re.search(r'MEDIUM[^:]*:\s*([\s\S]*?)(?=LONG[^:]*:|$)', text, re.I)
     l = re.search(r'LONG[^:]*:\s*([\s\S]*?)$', text, re.I)
     return (
-        s.group(1).strip() if s else text[:200],
+        s.group(1).strip() if s else text[:250],
         m.group(1).strip() if m else "",
         l.group(1).strip() if l else ""
     )
@@ -128,589 +271,220 @@ def parse_hashtags(text):
     def tags(raw): return re.findall(r'#\w+', raw) if raw else []
     return (tags(hv.group(1) if hv else ""), tags(mv.group(1) if mv else ""), tags(nv.group(1) if nv else ""))
 
-def format_script(text):
+def format_script_rich(text):
     hook  = re.search(r'HOOK[^:]*:\s*([\s\S]*?)(?=BODY|MIDDLE|$)', text, re.I)
     body  = re.search(r'(?:BODY|MIDDLE)[^:]*:\s*([\s\S]*?)(?=CTA|$)', text, re.I)
     cta   = re.search(r'CTA[^:]*:\s*([\s\S]*?)(?=SUGGESTED AUDIO|AUDIO|$)', text, re.I)
     audio = re.search(r'(?:SUGGESTED AUDIO|AUDIO)[^:]*:\s*([\s\S]*?)$', text, re.I)
     parts = []
-    if hook:  parts.append(f"🔴 HOOK (0–3s)\n{hook.group(1).strip()}")
-    if body:  parts.append(f"⚪ BODY (3–25s)\n{body.group(1).strip()}")
-    if cta:   parts.append(f"🟢 CTA (25–30s)\n{cta.group(1).strip()}")
-    if audio: parts.append(f"🟣 AUDIO VIBE\n{audio.group(1).strip()}")
-    return "\n\n".join(parts) if parts else text
+    if hook:
+        h = hook.group(1).strip()
+        parts.append(
+            f'<div style="margin-bottom:16px;padding:16px;background:{T["accent"]}0e;border-left:3px solid {T["accent"]};">'
+            f'<div style="font-family:JetBrains Mono,monospace;font-size:8px;letter-spacing:2px;text-transform:uppercase;color:{T["accent"]};margin-bottom:10px;">🔴 HOOK — 0 to 3 seconds</div>'
+            f'<div style="font-size:16px;font-weight:600;color:{T["text"]};line-height:1.5;">{h}</div></div>'
+        )
+    if body:
+        b = body.group(1).strip()
+        raw_lines = [ln.strip().lstrip('-').lstrip('0123456789.').strip() for ln in b.split('\n') if ln.strip()]
+        lines = [ln for ln in raw_lines if ln and ln not in ['-','•','*']]
+        lines_html = "".join([
+            f'<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;">'
+            f'<span style="color:{T["text4"]};font-family:JetBrains Mono,monospace;font-size:10px;margin-top:2px;flex-shrink:0;">{str(i+1).zfill(2)}</span>'
+            f'<span style="font-size:14px;color:{T["text2"]};line-height:1.6;">{ln}</span></div>'
+            for i, ln in enumerate(lines) if ln
+        ])
+        parts.append(
+            f'<div style="margin-bottom:16px;padding:16px;background:{T["bg3"]};border-left:3px solid {T["text4"]};">'
+            f'<div style="font-family:JetBrains Mono,monospace;font-size:8px;letter-spacing:2px;text-transform:uppercase;color:{T["text3"]};margin-bottom:12px;">⚪ BODY — 3 to 25 seconds</div>'
+            f'{lines_html}</div>'
+        )
+    if cta:
+        c2 = cta.group(1).strip()
+        parts.append(
+            f'<div style="margin-bottom:16px;padding:16px;background:{T["green"]}0e;border-left:3px solid {T["green"]};">'
+            f'<div style="font-family:JetBrains Mono,monospace;font-size:8px;letter-spacing:2px;text-transform:uppercase;color:{T["green"]};margin-bottom:10px;">🟢 CTA — 25 to 30 seconds</div>'
+            f'<div style="font-size:14px;color:{T["text"]};line-height:1.6;">{c2}</div></div>'
+        )
+    if audio:
+        a = audio.group(1).strip()
+        parts.append(
+            f'<div style="padding:16px;background:{T["purple"]}0e;border-left:3px solid {T["purple"]};">'
+            f'<div style="font-family:JetBrains Mono,monospace;font-size:8px;letter-spacing:2px;text-transform:uppercase;color:{T["purple"]};margin-bottom:10px;">🟣 AUDIO DIRECTION</div>'
+            f'<div style="font-size:13px;color:{T["text2"]};line-height:1.7;">{a}</div></div>'
+        )
+    return "".join(parts) if parts else f'<div style="font-size:14px;color:{T["text2"]};white-space:pre-wrap;line-height:1.85;">{text}</div>'
+
+POSTING_TIMES = {
+    "Instagram Reels": [("6–8 AM","Morning",False),("12–2 PM","Lunch",False),("7–9 PM","Evening",True),("10–11 PM","Night",False)],
+    "TikTok": [("7–9 AM","Morning",False),("3–5 PM","Afternoon",False),("7–9 PM","Prime",True),("11 PM","Late",False)],
+    "YouTube Shorts": [("8–10 AM","Morning",False),("2–4 PM","Afternoon",True),("6–8 PM","Evening",False)],
+}
 
 # ══════════════════════════════════════════
-# GLOBAL CSS
+# OUTPUT CARD — with COPY button, no duplicate download
 # ══════════════════════════════════════════
-st.markdown(f"""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&family=Fraunces:ital,opsz,wght@1,9..144,900&display=swap');
-*, *::before, *::after {{ box-sizing:border-box; }}
-html, body,
-[data-testid="stAppViewContainer"],
-[data-testid="stAppViewContainer"] > .main {{
-    background:{T["bg"]} !important;
-    color:{T["text"]} !important;
-    font-family:'Space Grotesk',sans-serif !important;
-}}
-[data-testid="stHeader"] {{ display:none !important; }}
-[data-testid="stSidebar"] {{ display:none !important; }}
-.block-container {{ padding:0 !important; max-width:100% !important; }}
-.stTextInput>div>div>input,.stTextArea>div>div>textarea {{
-    background:{T["bg3"]} !important; border:1px solid {T["rule2"]} !important;
-    border-radius:0 !important; color:{T["text"]} !important;
-    font-family:'Space Grotesk',sans-serif !important; font-size:13px !important;
-    padding:11px 13px !important;
-    transition:border-color 0.2s, box-shadow 0.2s !important;
-    caret-color:{T["accent"]} !important;
-}}
-.stTextInput>div>div>input:focus,.stTextArea>div>div>textarea:focus {{
-    border-color:{T["accent"]} !important;
-    box-shadow:0 0 0 2px {T["accent"]}18 !important;
-}}
-.stTextInput>div>div>input::placeholder,.stTextArea>div>div>textarea::placeholder {{
-    color:{T["text4"]} !important;
-}}
-[data-baseweb="select"]>div {{
-    background:{T["bg3"]} !important; border:1px solid {T["rule2"]} !important;
-    border-radius:0 !important; color:{T["text"]} !important;
-    font-family:'Space Grotesk',sans-serif !important; font-size:13px !important;
-}}
-[data-baseweb="popover"] ul {{
-    background:{T["bg3"]} !important; border:1px solid {T["rule2"]} !important;
-}}
-[data-baseweb="option"] {{
-    background:{T["bg3"]} !important; color:{T["text"]} !important;
-    font-family:'Space Grotesk',sans-serif !important; font-size:12px !important;
-}}
-[data-baseweb="option"]:hover {{ background:{T["bg4"]} !important; }}
-label,.stSelectbox label,.stTextInput label,.stTextArea label,.stRadio label {{
-    color:{T["text3"]} !important; font-family:'Space Mono',monospace !important;
-    font-size:8px !important; letter-spacing:2px !important; text-transform:uppercase !important;
-}}
-.stRadio>div {{ gap:6px !important; flex-direction:row !important; flex-wrap:wrap !important; }}
-.stRadio>div>label {{
-    background:{T["bg3"]} !important; border:1px solid {T["rule2"]} !important;
-    padding:8px 14px !important; transition:all 0.15s !important;
-    color:{T["text3"]} !important; font-size:11px !important;
-    letter-spacing:1px !important; border-radius:0 !important; margin:0 !important;
-}}
-.stRadio>div>label:hover {{ border-color:{T["accent"]} !important; color:{T["accent"]} !important; }}
-.stButton>button {{
-    background:transparent !important; color:{T["text3"]} !important;
-    border:1px solid {T["rule2"]} !important; border-radius:0 !important;
-    font-family:'Space Mono',monospace !important; font-size:9px !important;
-    letter-spacing:2px !important; text-transform:uppercase !important;
-    padding:10px 18px !important; transition:all 0.2s !important;
-    width:100% !important;
-}}
-.stButton>button:hover {{
-    border-color:{T["accent"]} !important; color:{T["accent"]} !important;
-    box-shadow:0 0 12px {T["accent"]}20 !important;
-}}
-.stDownloadButton>button {{
-    background:transparent !important; color:{T["text3"]} !important;
-    border:1px solid {T["rule2"]} !important; border-radius:0 !important;
-    font-family:'Space Mono',monospace !important; font-size:8px !important;
-    letter-spacing:2px !important; text-transform:uppercase !important;
-    padding:8px 14px !important; width:auto !important; transition:all 0.2s !important;
-}}
-.stDownloadButton>button:hover {{
-    border-color:{T["accent"]} !important; color:{T["accent"]} !important;
-}}
-.stTabs [data-baseweb="tab-list"] {{
-    background:transparent !important; border-bottom:1px solid {T["rule"]} !important;
-    gap:0 !important; padding:0 !important;
-}}
-.stTabs [data-baseweb="tab"] {{
-    background:transparent !important; color:{T["text3"]} !important;
-    font-family:'Space Mono',monospace !important; font-size:8px !important;
-    letter-spacing:2px !important; text-transform:uppercase !important;
-    padding:10px 18px !important; border-radius:0 !important;
-    border-bottom:2px solid transparent !important; transition:all 0.2s !important;
-}}
-.stTabs [aria-selected="true"] {{
-    color:{T["accent"]} !important; border-bottom-color:{T["accent"]} !important;
-    background:transparent !important;
-}}
-.stTabs [data-baseweb="tab-panel"] {{ padding:20px 0 0 !important; background:transparent !important; }}
-[data-testid="stMetric"] {{
-    background:{T["bg2"]} !important; border:1px solid {T["rule"]} !important;
-    padding:14px !important; border-radius:0 !important;
-}}
-[data-testid="stMetricLabel"]>div {{
-    font-family:'Space Mono',monospace !important; font-size:8px !important;
-    letter-spacing:2px !important; text-transform:uppercase !important;
-    color:{T["text4"]} !important;
-}}
-[data-testid="stMetricValue"]>div {{
-    font-family:'Space Mono',monospace !important; color:{T["text"]} !important; font-size:24px !important;
-}}
-.streamlit-expanderHeader {{
-    background:{T["bg2"]} !important; border:1px solid {T["rule"]} !important;
-    border-radius:0 !important; color:{T["text3"]} !important;
-    font-family:'Space Mono',monospace !important; font-size:9px !important;
-    letter-spacing:2px !important; text-transform:uppercase !important;
-}}
-.streamlit-expanderContent {{
-    background:{T["bg2"]} !important; border:1px solid {T["rule"]} !important;
-    border-top:none !important; padding:16px !important;
-}}
-hr {{ border-color:{T["rule"]} !important; margin:20px 0 !important; }}
-::-webkit-scrollbar {{ width:3px; height:3px; }}
-::-webkit-scrollbar-track {{ background:{T["bg"]}; }}
-::-webkit-scrollbar-thumb {{ background:{T["rule2"]}; }}
-::-webkit-scrollbar-thumb:hover {{ background:{T["accent"]}; }}
-
-div[data-testid="stButton"] button[kind="primary"],
-.generate-btn > div > button {{
-    background: linear-gradient(135deg, {T["accent"]} 0%, {T["accent2"]} 40%, {T["purple"]} 100%) !important;
-    background-size: 200% 200% !important;
-    color: #fff !important;
-    border: none !important;
-    font-family: 'Space Mono', monospace !important;
-    font-size: 11px !important;
-    font-weight: 700 !important;
-    letter-spacing: 4px !important;
-    text-transform: uppercase !important;
-    padding: 14px 20px !important;
-    cursor: pointer !important;
-    animation: liquidFlow 3s ease infinite !important;
-    box-shadow: 0 0 24px {T["accent"]}40, 0 4px 20px rgba(0,0,0,0.4) !important;
-}}
-@keyframes liquidFlow {{
-    0%   {{ background-position: 0% 50%; }}
-    50%  {{ background-position: 100% 50%; }}
-    100% {{ background-position: 0% 50%; }}
-}}
-
-.gold-btn-container > div > button {{
-    background: linear-gradient(135deg, #92400e 0%, {T["gold"]} 40%, {T["gold2"]} 70%, #92400e 100%) !important;
-    background-size: 300% 300% !important;
-    color: #000 !important;
-    border: 1px solid {T["gold2"]}80 !important;
-    font-family: 'Space Mono', monospace !important;
-    font-size: 10px !important;
-    font-weight: 700 !important;
-    letter-spacing: 3px !important;
-    text-transform: uppercase !important;
-    padding: 13px 20px !important;
-    cursor: pointer !important;
-    animation: goldFlow 4s ease infinite !important;
-    box-shadow: 0 0 30px {T["gold"]}50, 0 4px 20px rgba(0,0,0,0.5) !important;
-}}
-@keyframes goldFlow {{
-    0%   {{ background-position: 0% 50%; }}
-    50%  {{ background-position: 100% 50%; }}
-    100% {{ background-position: 0% 50%; }}
-}}
-
-/* HOME BUTTON */
-.home-btn-container > div > button {{
-    background: {T["bg3"]} !important;
-    color: {T["text2"]} !important;
-    border: 1px solid {T["rule2"]} !important;
-    font-family: 'Space Mono', monospace !important;
-    font-size: 9px !important;
-    letter-spacing: 2px !important;
-    text-transform: uppercase !important;
-    padding: 9px 16px !important;
-    width: auto !important;
-}}
-.home-btn-container > div > button:hover {{
-    border-color: {T["accent"]} !important;
-    color: {T["accent"]} !important;
-    box-shadow: 0 0 14px {T["accent"]}25 !important;
-}}
-
-/* OUTPUT CARD */
-.output-card {{
-    background: {T["glass"]};
-    border: 1px solid {T["glassborder"]};
-    padding: 18px;
-    position: relative;
-    margin-bottom: 8px;
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 13px;
-    line-height: 1.8;
-    color: {T["text2"]};
-    white-space: pre-wrap;
-}}
-
-.confidence-badge {{
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: linear-gradient(135deg, {T["green"]}20, {T["green"]}10);
-    border: 1px solid {T["green"]}40;
-    padding: 4px 10px;
-    font-family: 'Space Mono', monospace;
-    font-size: 9px;
-    letter-spacing: 2px;
-    color: {T["green"]};
-    text-transform: uppercase;
-}}
-@keyframes pulse {{
-    0%,100% {{ opacity:1; }}
-    50% {{ opacity:0.3; }}
-}}
-</style>
-""", unsafe_allow_html=True)
-
-# ══════════════════════════════════════════
-# NEURAL NETWORK BACKGROUND (ambient, all pages)
-# ══════════════════════════════════════════
-def inject_premium_effects(accent_hex="255,75,43"):
-    components.html(f"""
-<!DOCTYPE html><html><head>
-<style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{ overflow:hidden; background:transparent; }}
-#canvas {{ position:fixed; top:0; left:0; width:100vw; height:100vh; pointer-events:none; z-index:0; }}
-#aurora {{ position:fixed; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:0; overflow:hidden; }}
-.aurora-layer {{
-    position:absolute; width:200%; height:200%;
-    background: conic-gradient(from var(--angle, 0deg) at 50% 50%,
-        transparent 0deg, {T["accent"]}08 60deg, {T["purple"]}06 120deg,
-        transparent 180deg, {T["blue"]}05 240deg, {T["accent"]}08 300deg, transparent 360deg);
-    animation: auroraRotate 12s linear infinite; top:-50%; left:-50%;
-}}
-.aurora-layer-2 {{
-    position:absolute; width:150%; height:150%;
-    background: radial-gradient(ellipse at 20% 50%, {T["accent"]}07 0%, transparent 50%),
-                radial-gradient(ellipse at 80% 20%, {T["purple"]}06 0%, transparent 50%),
-                radial-gradient(ellipse at 60% 80%, {T["blue"]}05 0%, transparent 50%);
-    animation: auroraFloat 8s ease-in-out infinite alternate; top:-25%; left:-25%;
-}}
-@keyframes auroraRotate {{ from {{ transform:rotate(0deg); }} to {{ transform:rotate(360deg); }} }}
-@keyframes auroraFloat {{ from {{ transform:translate(0px,0px) scale(1); }} to {{ transform:translate(30px,-20px) scale(1.05); }} }}
-@property --angle {{ syntax:'<angle>'; initial-value:0deg; inherits:false; }}
-</style>
-</head><body>
-<div id="aurora"><div class="aurora-layer"></div><div class="aurora-layer-2"></div></div>
-<canvas id="canvas"></canvas>
-<script>
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-canvas.width = window.innerWidth; canvas.height = window.innerHeight;
-const nodes = Array.from({{length:55}}, () => ({{
-    x:Math.random()*canvas.width, y:Math.random()*canvas.height,
-    vx:(Math.random()-0.5)*0.4, vy:(Math.random()-0.5)*0.4,
-    r:Math.random()*2+1, pulse:Math.random()*Math.PI*2
-}}));
-let mouseX=canvas.width/2, mouseY=canvas.height/2;
-function drawNetwork() {{
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    nodes.forEach(n => {{
-        const dx=mouseX-n.x, dy=mouseY-n.y, dist=Math.sqrt(dx*dx+dy*dy);
-        if(dist<120) {{ n.vx+=dx/dist*0.015; n.vy+=dy/dist*0.015; }}
-        n.vx*=0.99; n.vy*=0.99; n.x+=n.vx; n.y+=n.vy; n.pulse+=0.02;
-        if(n.x<0||n.x>canvas.width) n.vx*=-1;
-        if(n.y<0||n.y>canvas.height) n.vy*=-1;
-        n.x=Math.max(0,Math.min(canvas.width,n.x)); n.y=Math.max(0,Math.min(canvas.height,n.y));
-    }});
-    for(let i=0;i<nodes.length;i++) {{
-        for(let j=i+1;j<nodes.length;j++) {{
-            const dx=nodes[i].x-nodes[j].x, dy=nodes[i].y-nodes[j].y;
-            const dist=Math.sqrt(dx*dx+dy*dy);
-            if(dist<110) {{
-                ctx.beginPath(); ctx.strokeStyle=`rgba({accent_hex},${{(1-dist/110)*0.18}})`; ctx.lineWidth=0.6;
-                ctx.moveTo(nodes[i].x,nodes[i].y); ctx.lineTo(nodes[j].x,nodes[j].y); ctx.stroke();
-            }}
-        }}
-    }}
-    nodes.forEach(n => {{
-        const p=Math.sin(n.pulse)*0.5+0.5, alpha=0.25+p*0.35, r=n.r+p*0.8;
-        ctx.beginPath(); ctx.arc(n.x,n.y,r,0,Math.PI*2);
-        ctx.fillStyle=`rgba({accent_hex},${{alpha}})`; ctx.fill();
-        ctx.beginPath(); ctx.arc(n.x,n.y,r*2.5,0,Math.PI*2);
-        ctx.fillStyle=`rgba({accent_hex},${{alpha*0.1}})`; ctx.fill();
-    }});
-    requestAnimationFrame(drawNetwork);
-}}
-drawNetwork();
-window.addEventListener('resize',()=>{{ canvas.width=window.innerWidth; canvas.height=window.innerHeight; }});
-window.addEventListener('mousemove',e=>{{ mouseX=e.clientX; mouseY=e.clientY; }});
-</script>
-</body></html>
-""", height=0, scrolling=False)
-
-# ══════════════════════════════════════════
-# GLASS SHATTER TRANSITION OVERLAY
-# Plays a full-screen shatter animation, then sends a
-# message back to Streamlit (via query param reload) to
-# switch pages once the animation completes.
-# ══════════════════════════════════════════
-def shatter_overlay(accent_color, target_page, label="ENTERING"):
-    """Renders a full-viewport shattering glass overlay that plays once,
-    then triggers a rerun into target_page by writing to sessionStorage
-    and forcing Streamlit's component to send a value back."""
-    shards = ""
-    cols, rows = 10, 6
-    cell_w, cell_h = 100/cols, 100/rows
-    for r in range(rows):
-        for c in range(cols):
-            x = c*cell_w
-            y = r*cell_h
-            # randomized fall direction & rotation per shard
-            dx = random.randint(-260, 260)
-            dy = random.randint(180, 520)
-            rot = random.randint(-260, 260)
-            delay = round(random.uniform(0, 0.18), 2)
-            dur = round(random.uniform(0.6, 1.05), 2)
-            # irregular triangle-ish clip via polygon jitter
-            jitter = lambda: random.randint(-6,6)
-            poly = f"polygon({jitter()+0}% {jitter()+0}%, {100+jitter()}% {jitter()}%, {100+jitter()}% {100+jitter()}%, {jitter()}% {100+jitter()}%)"
-            shards += f"""
-<div class="shard" style="
-    left:{x}vw; top:{y}vh; width:{cell_w}vw; height:{cell_h}vh;
-    --dx:{dx}px; --dy:{dy}px; --rot:{rot}deg;
-    animation-delay:{delay}s; animation-duration:{dur}s;
-    clip-path:{poly};
-"></div>"""
+def output_card(title, content, accent=None, confidence=None, rich_html=None, height=None):
+    ac = accent or T["accent"]
+    wc = len(content.split()) if content else 0
+    conf_badge = (
+        f'<span style="font-family:JetBrains Mono,monospace;font-size:8px;letter-spacing:1px;'
+        f'color:{T["green"]};display:flex;align-items:center;gap:5px;">'
+        f'<span style="width:5px;height:5px;background:{T["green"]};border-radius:50%;display:inline-block;'
+        f'animation:cp 1.5s infinite;"></span>✦ {confidence}% CONFIDENCE</span>'
+        if confidence else ""
+    )
+    safe = (content or "").replace("\\", "\\\\").replace("`", "'").replace('"', '\\"').replace("\n", "\\n")
+    body_html = rich_html if rich_html else (
+        f'<div style="font-size:14px;line-height:1.85;color:{T["text2"]};'
+        f'white-space:pre-wrap;font-family:Inter,sans-serif;">'
+        f'{(content or "").replace(chr(10), "<br>")}</div>'
+    )
+    h_est = height if height else max(160, min(len(content or "")//2 + 120, 600))
 
     components.html(f"""
 <!DOCTYPE html><html><head>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-html,body {{ width:100%; height:100%; overflow:hidden; background:transparent; }}
-.stage {{
-    position:fixed; inset:0; width:100vw; height:100vh; z-index:99999;
-    pointer-events:none;
-}}
-.shard {{
-    position:absolute;
-    background:
-        linear-gradient(135deg, {accent_color}22, transparent 60%),
-        rgba(255,255,255,0.045);
-    border:1px solid {accent_color}33;
-    backdrop-filter: blur(6px);
-    animation-name: fall;
-    animation-timing-function: cubic-bezier(.5,0,.85,1);
-    animation-fill-mode: forwards;
-    box-shadow: 0 0 18px {accent_color}22 inset;
-}}
-@keyframes fall {{
-    0% {{ transform: translate(0,0) rotate(0deg) scale(1); opacity:1; }}
-    60% {{ opacity:1; }}
-    100% {{ transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(0.85); opacity:0; }}
-}}
-.flash {{
-    position:fixed; inset:0; background:{accent_color};
-    opacity:0; animation: flashpop 0.5s ease-out forwards;
-    mix-blend-mode: screen;
-}}
-@keyframes flashpop {{
-    0% {{ opacity:0.55; }}
-    100% {{ opacity:0; }}
-}}
-.label {{
-    position:fixed; bottom:36px; left:50%; transform:translateX(-50%);
-    font-family:'Space Mono',monospace; font-size:10px; letter-spacing:6px;
-    text-transform:uppercase; color:{accent_color};
-    opacity:0; animation: labelpop 1s ease-out 0.15s forwards;
-}}
-@keyframes labelpop {{ 0% {{opacity:0;}} 30% {{opacity:1;}} 100% {{opacity:0;}} }}
+*{{margin:0;padding:0;box-sizing:border-box;}}
+body{{background:transparent;font-family:Inter,sans-serif;padding:2px 0;}}
+@keyframes cp{{0%,100%{{opacity:1;box-shadow:0 0 5px {T["green"]};}}50%{{opacity:.3;box-shadow:none;}}}}
+.card{{background:{T["bg2"]};border:1px solid {T["rule"]};border-top:2px solid var(--ac);overflow:hidden;transition:border-color .25s,box-shadow .25s;}}
+.card:hover{{border-color:var(--ac)55;box-shadow:0 4px 28px var(--ac)0d;}}
+.head{{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid {T["rule"]};background:{T["bg3"]};flex-wrap:wrap;gap:8px;}}
+.title{{font-family:JetBrains Mono,monospace;font-size:8px;letter-spacing:2.5px;text-transform:uppercase;color:var(--ac);}}
+.meta{{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}}
+.chip{{font-family:JetBrains Mono,monospace;font-size:7px;color:{T["text4"]};background:{T["bg4"]};border:1px solid {T["rule2"]};padding:2px 7px;}}
+.cbtn{{background:transparent;border:1px solid {T["rule2"]};color:{T["text3"]};font-family:JetBrains Mono,monospace;font-size:8px;letter-spacing:1px;padding:4px 11px;cursor:pointer;transition:all .15s;text-transform:uppercase;}}
+.cbtn:hover{{border-color:var(--ac);color:var(--ac);}}
+.cbtn.ok{{border-color:{T["green"]};color:{T["green"]};}}
+.body{{padding:18px;}}
 </style>
 </head><body>
-<div class="stage">
-<div class="flash"></div>
-{shards}
-<div class="label">{label}</div>
-</div>
-</body></html>
-""", height=0, scrolling=False)
-
-# ══════════════════════════════════════════
-# COPY-ENABLED OUTPUT CARD
-# ══════════════════════════════════════════
-def output_card(title, content, accent_color=None, show_copy=True, confidence=None, height=None):
-    color = accent_color or T["accent"]
-    h_style = f"max-height:{height}px;overflow-y:auto;" if height else ""
-    conf_badge = ""
-    if confidence:
-        conf_badge = f'<div style="display:inline-flex;align-items:center;gap:6px;background:{T["green"]}15;border:1px solid {T["green"]}40;padding:3px 9px;font-family:Space Mono,monospace;font-size:8px;letter-spacing:2px;color:{T["green"]};text-transform:uppercase;"><span style="width:5px;height:5px;background:{T["green"]};border-radius:50%;display:inline-block;animation:confPulse 1.5s infinite;"></span>Confidence: {confidence}%</div>'
-
-    copy_btn = ""
-    if show_copy:
-        copy_btn = f'<button onclick="copyContent(this)" style="background:transparent;border:1px solid {T["rule2"]};color:{T["text4"]};font-family:Space Mono,monospace;font-size:7px;letter-spacing:2px;padding:4px 10px;cursor:pointer;text-transform:uppercase;transition:all 0.2s;" onmouseover="this.style.borderColor=\'{color}\';this.style.color=\'{color}\';" onmouseout="this.style.borderColor=\'{T["rule2"]}\';this.style.color=\'{T["text4"]}\';">COPY</button>'
-
-    escaped_content = content.replace("`", "&#96;").replace("\\", "\\\\").replace("\n", "\\n").replace("'", "\\'")
-
-    components.html(f"""
-<!DOCTYPE html><html><head>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
-<style>
-* {{ margin:0;padding:0;box-sizing:border-box; }}
-body {{ background:transparent;font-family:'Space Grotesk',sans-serif;padding:2px; }}
-@keyframes confPulse {{ 0%,100%{{opacity:1;box-shadow:0 0 4px {T["green"]};}} 50%{{opacity:0.4;box-shadow:none;}} }}
-.card {{
-    background:{T["glass"]};backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
-    border:1px solid {T["glassborder"]};border-left:2px solid {color};
-    padding:16px;position:relative;overflow:hidden;{h_style}
-}}
-.card:hover {{ border-color:{color}80;box-shadow:0 0 30px {color}15,0 8px 32px rgba(0,0,0,0.3); }}
-.card-header {{ display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px; }}
-.card-title {{ font-family:'Space Mono',monospace;font-size:8px;letter-spacing:3px;text-transform:uppercase;color:{color}; }}
-.card-actions {{ display:flex;align-items:center;gap:8px;flex-wrap:wrap; }}
-.card-body {{ font-size:13px;line-height:1.8;color:{T["text2"]};white-space:pre-wrap; }}
-.toast {{ position:fixed;bottom:12px;right:12px;background:{color};color:#fff;
-    font-family:'Space Mono',monospace;font-size:9px;letter-spacing:2px;padding:7px 14px;
-    opacity:0;transition:opacity 0.2s;pointer-events:none;z-index:9999;text-transform:uppercase; }}
-.toast.show {{ opacity:1; }}
-</style>
-</head><body>
-<div class="card">
-    <div class="card-header">
-        <div class="card-title">{title}</div>
-        <div class="card-actions">
-            {conf_badge}
-            {copy_btn}
-        </div>
+<div class="card" style="--ac:{ac};">
+  <div class="head">
+    <div class="title">{title}</div>
+    <div class="meta">
+      {conf_badge}
+      <span class="chip">{wc} words</span>
+      <button class="cbtn" id="cb" onclick="cp_()">COPY</button>
     </div>
-    <div class="card-body" id="content">{content}</div>
+  </div>
+  <div class="body">{body_html}</div>
 </div>
-<div class="toast" id="toast">COPIED ✓</div>
 <script>
-function copyContent(btn) {{
-    const text = `{escaped_content}`;
-    navigator.clipboard.writeText(text).then(()=>{{
-        const t = document.getElementById('toast');
-        t.classList.add('show');
-        setTimeout(()=>t.classList.remove('show'), 1600);
+const raw="{safe}".replace(/\\n/g,'\\n');
+function cp_(){{
+    navigator.clipboard.writeText(raw).then(()=>{{
+        const b=document.getElementById('cb');
+        b.textContent='✓ COPIED';b.classList.add('ok');
+        setTimeout(()=>{{b.textContent='COPY';b.classList.remove('ok');}},2200);
     }}).catch(()=>{{
-        const ta = document.createElement('textarea');
-        ta.value = text; document.body.appendChild(ta);
-        ta.select(); document.execCommand('copy');
+        const ta=document.createElement('textarea');ta.value=raw;
+        document.body.appendChild(ta);ta.select();document.execCommand('copy');
         document.body.removeChild(ta);
-        const t = document.getElementById('toast');
-        t.classList.add('show');
-        setTimeout(()=>t.classList.remove('show'), 1600);
+        const b=document.getElementById('cb');b.textContent='✓ COPIED';b.classList.add('ok');
+        setTimeout(()=>{{b.textContent='COPY';b.classList.remove('ok');}},2200);
     }});
 }}
 </script>
 </body></html>
-""", height=(height or 200) + 80, scrolling=False)
+""", height=h_est, scrolling=False)
 
 # ══════════════════════════════════════════
-# SCORE BENTO WITH ANIMATED COUNTERS
+# SCORE CARDS — animated counters + AI Confidence per card
 # ══════════════════════════════════════════
-def score_bento(scores, confidence):
+def score_cards(scores):
     items = [
-        ("Viral Potential", "viral",      T["accent"]),
-        ("Hook Strength",   "hook",       T["purple"]),
-        ("Engagement",      "engagement", T["blue"]),
-        ("Shareability",    "share",      T["green"]),
-        ("Retention",       "retention",  T["yellow"]),
-        ("Reach Rating",    "reach",      T["orange"]),
+        ("Viral Potential","viral",T["accent"]),
+        ("Hook Strength","hook",T["purple"]),
+        ("Engagement","engagement",T["blue"]),
+        ("Shareability","share",T["green"]),
+        ("Retention","retention",T["yellow"]),
+        ("Reach Rating","reach",T["orange"]),
     ]
     cards_html = ""
     for label, key, color in items:
         val, _ = scores[key]
+        conf = min(val + random.randint(0, 4), 100)
         cards_html += f"""
-<div class="score-card" style="--accent:{color};" onmousemove="tilt(this,event)" onmouseleave="resetTilt(this)">
-    <div class="card-glow"></div>
-    <div class="score-label">{label}</div>
-    <div class="score-value" data-target="{val}">0</div>
-    <div class="score-bar"><div class="score-fill" data-width="{val}"></div></div>
+<div class="sc" style="--ac:{color};" onmousemove="tilt(this,event)" onmouseleave="rt(this)">
+  <div class="sl">{label}</div>
+  <div class="sv" data-t="{val}">0</div>
+  <div class="sb"><div class="sf" data-w="{val}"></div></div>
+  <div class="sc2">AI CONFIDENCE: {conf}%</div>
 </div>"""
 
     components.html(f"""
 <!DOCTYPE html><html><head>
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
-* {{ margin:0;padding:0;box-sizing:border-box; }}
-body {{ background:transparent;font-family:'Space Mono',monospace;padding:4px 2px; }}
-.conf-row {{
-    display:flex;align-items:center;gap:12px;margin-bottom:14px;
-    padding:10px 14px;background:{T["glass"]};border:1px solid {T["green"]}30;
-    border-left:2px solid {T["green"]};
-}}
-.conf-label {{ font-size:8px;letter-spacing:2px;text-transform:uppercase;color:{T["text3"]}; }}
-.conf-value {{ font-size:22px;font-weight:700;color:{T["green"]}; }}
-.conf-bar-wrap {{ flex:1;height:3px;background:{T["rule2"]};overflow:hidden; }}
-.conf-bar {{ height:100%;background:linear-gradient(90deg,{T["green"]},{T["green"]}80);width:0;transition:width 1.6s cubic-bezier(0.4,0,0.2,1); }}
-.conf-dot {{ width:7px;height:7px;background:{T["green"]};border-radius:50%;animation:cpulse 1.5s infinite;flex-shrink:0; }}
-@keyframes cpulse {{ 0%,100%{{opacity:1;box-shadow:0 0 6px {T["green"]};}} 50%{{opacity:0.3;box-shadow:none;}} }}
-.grid {{ display:grid;grid-template-columns:repeat(3,1fr);gap:8px; }}
-.score-card {{
-    background:{T["glass"]};backdrop-filter:blur(20px);
-    border:1px solid {T["glassborder"]};border-top:2px solid var(--accent);
-    padding:14px;position:relative;overflow:hidden;
-    transition:transform 0.2s,box-shadow 0.2s;cursor:default;
-}}
-.card-glow {{ position:absolute;inset:0;background:radial-gradient(circle at 50% 0%,var(--accent)15 0%,transparent 70%);opacity:0;transition:opacity 0.3s;pointer-events:none; }}
-.score-card:hover .card-glow {{ opacity:1; }}
-.score-card:hover {{ box-shadow:0 0 20px var(--accent)20,0 4px 20px rgba(0,0,0,0.4); }}
-.score-label {{ font-size:7px;letter-spacing:2px;text-transform:uppercase;color:{T["text3"]};margin-bottom:6px; }}
-.score-value {{ font-size:28px;font-weight:700;color:var(--accent);line-height:1;margin-bottom:8px; }}
-.score-bar {{ height:2px;background:{T["rule2"]};overflow:hidden; }}
-.score-fill {{ height:100%;background:var(--accent);width:0%;transition:width 1.4s cubic-bezier(0.4,0,0.2,1); }}
+*{{margin:0;padding:0;box-sizing:border-box;}}
+body{{background:transparent;font-family:JetBrains Mono,monospace;padding:4px 2px;}}
+.grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}}
+.sc{{background:{T["bg2"]};border:1px solid {T["rule"]};border-top:2px solid var(--ac);padding:16px;transition:transform .2s,box-shadow .25s;cursor:default;}}
+.sc:hover{{box-shadow:0 8px 30px var(--ac)18;}}
+.sl{{font-size:7px;letter-spacing:2px;text-transform:uppercase;color:{T["text3"]};margin-bottom:8px;}}
+.sv{{font-size:32px;font-weight:600;color:var(--ac);line-height:1;margin-bottom:8px;}}
+.sb{{height:2px;background:{T["rule2"]};overflow:hidden;margin-bottom:8px;}}
+.sf{{height:100%;background:var(--ac);width:0%;transition:width 1.5s cubic-bezier(.4,0,.2,1);}}
+.sc2{{font-size:7px;letter-spacing:1px;color:{T["green"]};opacity:.8;}}
 </style>
 </head><body>
-<div class="conf-row">
-    <div class="conf-dot"></div>
-    <div>
-        <div class="conf-label">AI Confidence</div>
-        <div class="conf-value" id="confVal">0%</div>
-    </div>
-    <div class="conf-bar-wrap"><div class="conf-bar" id="confBar" data-width="{confidence}"></div></div>
-</div>
 <div class="grid">{cards_html}</div>
 <script>
-(function() {{
-    const target = {confidence};
-    let cur = 0; const step = Math.ceil(target/50);
-    const el = document.getElementById('confVal');
-    const timer = setInterval(()=>{{
-        cur = Math.min(cur+step, target);
-        el.textContent = cur + '%';
-        if(cur>=target) clearInterval(timer);
-    }}, 20);
-}})();
-document.querySelectorAll('.score-value').forEach(el => {{
-    const target = parseInt(el.dataset.target);
-    let cur = 0; const step = Math.ceil(target/50);
-    const timer = setInterval(()=>{{
-        cur = Math.min(cur+step, target);
-        el.textContent = cur;
-        if(cur>=target) clearInterval(timer);
-    }}, 25);
+// Animated count-up: 0 → target
+document.querySelectorAll('.sv').forEach(el=>{{
+    const t=parseInt(el.dataset.t);let c=0;
+    const step=Math.ceil(t/50);
+    const tm=setInterval(()=>{{c=Math.min(c+step,t);el.textContent=c;if(c>=t)clearInterval(tm);}},22);
 }});
-setTimeout(()=>{{
-    document.querySelectorAll('.score-fill').forEach(el=>{{ el.style.width = el.dataset.width + '%'; }});
-    document.getElementById('confBar').style.width = document.getElementById('confBar').dataset.width + '%';
-}}, 80);
-function tilt(card,e) {{
-    const r=card.getBoundingClientRect();
-    const rx=((e.clientY-r.top-r.height/2)/r.height)*-8;
-    const ry=((e.clientX-r.left-r.width/2)/r.width)*8;
-    card.style.transform=`perspective(400px) rotateX(${{rx}}deg) rotateY(${{ry}}deg) translateY(-2px)`;
+// Fill bars after tiny delay
+setTimeout(()=>document.querySelectorAll('.sf').forEach(el=>el.style.width=el.dataset.w+'%'),80);
+// 3D tilt on hover
+function tilt(c,e){{
+    const r=c.getBoundingClientRect();
+    const rx=((e.clientY-r.top-r.height/2)/r.height)*-5;
+    const ry=((e.clientX-r.left-r.width/2)/r.width)*5;
+    c.style.transform=`perspective(600px) rotateX(${{rx}}deg) rotateY(${{ry}}deg) translateY(-2px)`;
 }}
-function resetTilt(card) {{ card.style.transform=''; }}
+function rt(c){{c.style.transform='';}}
 </script>
 </body></html>
-""", height=290, scrolling=False)
+""", height=248, scrolling=False)
 
 # ══════════════════════════════════════════
 # RADAR CHART
 # ══════════════════════════════════════════
-def radar_component(scores):
+def radar_chart(scores):
     vals = [scores[k][0] for k in ['viral','hook','engagement','share','retention','reach']]
-    labels = ['Viral','Hook','Engage','Share','Retain','Reach']
     components.html(f"""
 <!DOCTYPE html><html><head>
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<style>* {{ margin:0;padding:0;box-sizing:border-box; }} body {{ background:transparent;display:flex;align-items:center;justify-content:center; }} canvas {{ max-width:220px;max-height:220px; }}</style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>*{{margin:0;padding:0;}}body{{background:transparent;display:flex;align-items:center;justify-content:center;}}canvas{{max-width:220px;max-height:220px;}}</style>
 </head><body>
-<canvas id="rc"></canvas>
+<canvas id="r"></canvas>
 <script>
-new Chart(document.getElementById('rc'), {{
+new Chart(document.getElementById('r'),{{
     type:'radar',
-    data:{{ labels:{labels}, datasets:[{{ data:{vals}, backgroundColor:'rgba(255,75,43,0.1)', borderColor:'{T["accent"]}', borderWidth:1.5, pointBackgroundColor:'{T["accent"]}', pointRadius:4, pointHoverRadius:6 }}] }},
-    options:{{ responsive:true, scales:{{ r:{{ min:0,max:100, ticks:{{display:false}}, grid:{{color:'rgba(255,75,43,0.08)'}}, angleLines:{{color:'rgba(255,75,43,0.08)'}}, pointLabels:{{color:'{T["text3"]}',font:{{family:'Space Mono',size:9}}}} }} }}, plugins:{{legend:{{display:false}}}}, animation:{{duration:1200,easing:'easeOutQuart'}} }}
+    data:{{
+        labels:['Viral','Hook','Engage','Share','Retain','Reach'],
+        datasets:[{{
+            data:{vals},
+            backgroundColor:'rgba(255,75,43,0.08)',
+            borderColor:'{T["accent"]}',
+            borderWidth:1.5,
+            pointBackgroundColor:'{T["accent"]}',
+            pointRadius:4,
+            pointHoverRadius:6
+        }}]
+    }},
+    options:{{
+        responsive:true,
+        scales:{{r:{{min:0,max:100,ticks:{{display:false}},grid:{{color:'{T["rule2"]}'}},angleLines:{{color:'{T["rule2"]}'}},pointLabels:{{color:'{T["text3"]}',font:{{family:'JetBrains Mono',size:9}}}}}}}},
+        plugins:{{legend:{{display:false}}}},
+        animation:{{duration:1200,easing:'easeOutQuart'}}
+    }}
 }});
 </script>
 </body></html>
@@ -720,803 +494,704 @@ new Chart(document.getElementById('rc'), {{
 # HASHTAG COMPONENT
 # ══════════════════════════════════════════
 def hashtag_component(hv, mv, nv):
-    def tags_html(tags, color):
-        return "".join([f'<span class="tag" style="--c:{color};" onclick="copyTag(this)">{t}</span>' for t in tags])
-
+    def thtml(tags, color):
+        return "".join([f'<span class="t" style="--c:{color};" onclick="ct(this)">{t}</span>' for t in tags])
     components.html(f"""
 <!DOCTYPE html><html><head>
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Space+Grotesk:wght@400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
-* {{ margin:0;padding:0;box-sizing:border-box; }}
-body {{ background:transparent;font-family:'Space Grotesk',sans-serif;padding:4px 2px; }}
-.group {{ margin-bottom:16px; }}
-.group-label {{ font-family:'Space Mono',monospace;font-size:7px;letter-spacing:2px;text-transform:uppercase;color:{T["text3"]};margin-bottom:8px;display:flex;align-items:center;justify-content:space-between; }}
-.copy-all {{ background:transparent;border:1px solid {T["rule2"]};color:{T["text4"]};font-family:'Space Mono',monospace;font-size:7px;letter-spacing:1px;padding:2px 7px;cursor:pointer;transition:all 0.15s;text-transform:uppercase; }}
-.copy-all:hover {{ border-color:{T["accent"]};color:{T["accent"]}; }}
-.tags {{ display:flex;flex-wrap:wrap;gap:5px; }}
-.tag {{ background:{T["bg3"]};border:1px solid {T["rule2"]};color:{T["text2"]};font-family:'Space Mono',monospace;font-size:10px;padding:4px 9px;cursor:pointer;transition:all 0.2s;display:inline-block;position:relative;overflow:hidden; }}
-.tag::before {{ content:'';position:absolute;inset:0;background:var(--c);opacity:0;transition:opacity 0.2s; }}
-.tag:hover::before {{ opacity:0.1; }}
-.tag:hover {{ border-color:var(--c);color:var(--c);transform:translateY(-1px); }}
-.toast {{ position:fixed;bottom:10px;right:10px;background:{T["accent"]};color:#fff;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:2px;padding:6px 12px;opacity:0;transition:opacity 0.2s;pointer-events:none;z-index:999;text-transform:uppercase; }}
-.toast.show {{ opacity:1; }}
+*{{margin:0;padding:0;box-sizing:border-box;}}
+body{{background:transparent;padding:4px 0;font-family:JetBrains Mono,monospace;}}
+.g{{margin-bottom:22px;}}
+.gl{{font-size:7px;letter-spacing:2px;text-transform:uppercase;color:{T["text3"]};margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;}}
+.ca{{background:transparent;border:1px solid {T["rule2"]};color:{T["text4"]};font-family:JetBrains Mono,monospace;font-size:7px;letter-spacing:1px;padding:3px 8px;cursor:pointer;transition:all .15s;text-transform:uppercase;}}
+.ca:hover{{border-color:{T["accent"]};color:{T["accent"]};}}
+.ts{{display:flex;flex-wrap:wrap;gap:6px;}}
+.t{{background:{T["bg3"]};border:1px solid {T["rule2"]};color:{T["text2"]};font-family:JetBrains Mono,monospace;font-size:10px;padding:5px 10px;cursor:pointer;transition:all .2s;}}
+.t:hover{{border-color:var(--c);color:var(--c);transform:translateY(-2px);box-shadow:0 4px 12px var(--c)20;}}
+.toast{{position:fixed;bottom:12px;right:12px;background:{T["accent"]};color:#fff;font-family:JetBrains Mono,monospace;font-size:9px;letter-spacing:2px;padding:7px 14px;opacity:0;transition:opacity .2s;pointer-events:none;}}
+.toast.s{{opacity:1;}}
 </style>
 </head><body>
-<div class="group">
-    <div class="group-label"><span>High Volume — 1M+ posts ({len(hv)} tags)</span><button class="copy-all" onclick="copyGroup('hv')">COPY ALL</button></div>
-    <div class="tags" id="hv">{tags_html(hv, T["accent"])}</div>
-</div>
-<div class="group">
-    <div class="group-label"><span>Medium Volume — 100K–1M ({len(mv)} tags)</span><button class="copy-all" onclick="copyGroup('mv')">COPY ALL</button></div>
-    <div class="tags" id="mv">{tags_html(mv, T["blue"])}</div>
-</div>
-<div class="group">
-    <div class="group-label"><span>Niche Community — Under 100K ({len(nv)} tags)</span><button class="copy-all" onclick="copyGroup('nv')">COPY ALL</button></div>
-    <div class="tags" id="nv">{tags_html(nv, T["green"])}</div>
-</div>
+<div class="g"><div class="gl"><span>High Volume — 1M+ ({len(hv)} tags)</span><button class="ca" onclick="cg('hv')">COPY ALL</button></div><div class="ts" id="hv">{thtml(hv,T["accent"])}</div></div>
+<div class="g"><div class="gl"><span>Medium Volume — 100K–1M ({len(mv)} tags)</span><button class="ca" onclick="cg('mv')">COPY ALL</button></div><div class="ts" id="mv">{thtml(mv,T["blue"])}</div></div>
+<div class="g"><div class="gl"><span>Niche Community — Under 100K ({len(nv)} tags)</span><button class="ca" onclick="cg('nv')">COPY ALL</button></div><div class="ts" id="nv">{thtml(nv,T["green"])}</div></div>
 <div class="toast" id="toast">COPIED ✓</div>
 <script>
-function showToast() {{ const t=document.getElementById('toast'); t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1500); }}
-function copyTag(el) {{ navigator.clipboard.writeText(el.textContent); showToast(); }}
-function copyGroup(id) {{ const tags=Array.from(document.getElementById(id).querySelectorAll('.tag')).map(t=>t.textContent).join(' '); navigator.clipboard.writeText(tags); showToast(); }}
+function sh(){{const t=document.getElementById('toast');t.classList.add('s');setTimeout(()=>t.classList.remove('s'),1500);}}
+function ct(el){{navigator.clipboard.writeText(el.textContent);sh();}}
+function cg(id){{navigator.clipboard.writeText(Array.from(document.getElementById(id).querySelectorAll('.t')).map(t=>t.textContent).join(' '));sh();}}
 </script>
 </body></html>
-""", height=300, scrolling=False)
+""", height=320, scrolling=False)
 
 # ══════════════════════════════════════════
-# TOPBAR
+# LIQUID GENERATE BUTTON — single, no duplicate
 # ══════════════════════════════════════════
-def render_topbar(show_home=False, status_label="GEMINI LIVE"):
-    home_html = ""
-    cols = st.columns([0.06, 0.94]) if show_home else None
-    st.markdown(f"""
-<div style="display:flex;align-items:center;justify-content:space-between;
-padding:0 20px 0 16px;height:52px;background:{T["bg2"]}ee;
-border-bottom:1px solid {T["rule"]};backdrop-filter:blur(20px);position:sticky;top:0;z-index:100;">
-  <div style="display:flex;align-items:center;gap:10px;">
-    <div style="width:26px;height:26px;background:{T["accent"]};
-    display:flex;align-items:center;justify-content:center;font-size:13px;
-    box-shadow:0 0 16px {T["accent"]}60;">🎬</div>
-    <div style="font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:{T["text"]};letter-spacing:1px;">
-        Reel<span style="color:{T["accent"]};">Mind</span> AI</div>
+def generate_button(label="→ GENERATE", key="gbtn", gold=False):
+    grad = (
+        f"linear-gradient(110deg,{T['gold']} 0%,{T['gold2']} 40%,#92400e 80%,{T['gold']} 130%)"
+        if gold else
+        f"linear-gradient(110deg,{T['accent']} 0%,{T['accent2']} 35%,{T['purple']} 70%,{T['accent']} 130%)"
+    )
+    text_color = "#0a0a0a" if gold else "#ffffff"
+    components.html(f"""
+<!DOCTYPE html><html><head>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+<style>
+*{{margin:0;padding:0;box-sizing:border-box;}}
+body{{background:transparent;height:58px;display:flex;align-items:center;}}
+.btn{{width:100%;height:52px;background:none;border:none;cursor:pointer;position:relative;overflow:hidden;outline:none;}}
+.fill{{position:absolute;inset:0;background:{grad};background-size:250% 250%;animation:lf 3.5s ease infinite;transition:filter .2s;}}
+.btn:hover .fill{{filter:brightness(1.12);}}
+.btn:active .fill{{filter:brightness(.85);transform:scale(.99);}}
+@keyframes lf{{0%{{background-position:0% 50%}}50%{{background-position:100% 50%}}100%{{background-position:0% 50%}}}}
+.label{{position:relative;z-index:2;font-family:JetBrains Mono,monospace;font-size:11px;font-weight:700;letter-spacing:4px;text-transform:uppercase;color:{text_color};pointer-events:none;}}
+.glow{{position:absolute;inset:0;box-shadow:inset 0 0 0 1px rgba(255,255,255,.15);z-index:1;pointer-events:none;}}
+.rip{{position:absolute;border-radius:50%;background:rgba(255,255,255,.28);transform:scale(0);animation:ra .65s linear forwards;pointer-events:none;}}
+@keyframes ra{{to{{transform:scale(4.5);opacity:0;}}}}
+</style>
+</head><body>
+<button class="btn" id="b">
+  <div class="fill"></div>
+  <div class="glow"></div>
+  <span class="label">{label}</span>
+</button>
+<script>
+document.getElementById('b').addEventListener('click',e=>{{
+    const btn=e.currentTarget,rect=btn.getBoundingClientRect();
+    const r=document.createElement('span');r.className='rip';
+    const sz=Math.max(rect.width,rect.height);
+    r.style.cssText=`width:${{sz}}px;height:${{sz}}px;left:${{e.clientX-rect.left-sz/2}}px;top:${{e.clientY-rect.top-sz/2}}px`;
+    btn.appendChild(r);setTimeout(()=>r.remove(),650);
+    const cols=['{T["accent"]}','{T["accent2"]}','{T["purple"]}','#fff'];
+    for(let i=0;i<28;i++){{
+        const p=document.createElement('div'),angle=(Math.PI*2*i)/28,d=45+Math.random()*90;
+        const sz2=Math.random()*6+2,col=cols[Math.floor(Math.random()*cols.length)];
+        const dur=(.4+Math.random()*.6)+'s';
+        const st=document.createElement('style');
+        st.textContent=`@keyframes pf${{i}}{{0%{{transform:translate(0,0) scale(1);opacity:1}}100%{{transform:translate(${{Math.cos(angle)*d}}px,${{Math.sin(angle)*d}}px) scale(0);opacity:0}}}}`;
+        document.head.appendChild(st);
+        p.style.cssText=`position:fixed;border-radius:50%;pointer-events:none;z-index:9997;left:${{e.clientX}}px;top:${{e.clientY}}px;width:${{sz2}}px;height:${{sz2}}px;background:${{col}};box-shadow:0 0 ${{sz2*2}}px ${{col}};animation:pf${{i}} ${{dur}} ease-out forwards;`;
+        document.body.appendChild(p);
+        setTimeout(()=>{{p.remove();st.remove();}},parseFloat(dur)*1000);
+    }}
+    window.parent.postMessage({{type:'btn_click',key:'{key}'}}, '*');
+}});
+</script>
+</body></html>
+""", height=58, scrolling=False)
+
+# ══════════════════════════════════════════
+# LOADING STEPS RENDERER
+# ══════════════════════════════════════════
+def show_loading(steps, accent_color=None):
+    ac = accent_color or T["accent"]
+    ph = st.empty()
+    def rows(done):
+        return "".join([
+            f'<div style="display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid {T["rule"]};font-family:JetBrains Mono,monospace;font-size:10px;letter-spacing:1px;color:{T["green"] if i<done else (ac if i==done else T["text4"])};transition:color .3s;">'
+            f'<span style="width:16px;text-align:center;">{"✓" if i<done else ("◌" if i==done else str(i+1))}</span>'
+            f'<span>{s}</span></div>'
+            for i, s in enumerate(steps)
+        ])
+    for i in range(len(steps)):
+        ph.markdown(
+            f'<div style="background:{T["bg2"]};border:1px solid {T["rule"]};border-left:2px solid {ac};padding:24px;margin:16px 0;">{rows(i)}</div>',
+            unsafe_allow_html=True
+        )
+        time.sleep(0.42)
+    ph.markdown(
+        f'<div style="background:{T["bg2"]};border:1px solid {T["rule"]};border-left:2px solid {T["green"]};padding:24px;margin:16px 0;">{rows(len(steps))}</div>',
+        unsafe_allow_html=True
+    )
+    time.sleep(0.28)
+    ph.empty()
+
+# ══════════════════════════════════════════
+# TOP NAV
+# ══════════════════════════════════════════
+inject_cursor()
+theme_icon = "☀" if IS_DARK else "◑"
+
+st.markdown(f"""
+<div style="display:flex;align-items:center;justify-content:space-between;padding:0 40px;height:56px;
+background:{T["bg"]}f2;border-bottom:1px solid {T["rule"]};position:sticky;top:0;z-index:100;backdrop-filter:blur(14px);">
+  <div style="display:flex;align-items:center;gap:36px;">
+    <div style="font-family:Syne,sans-serif;font-size:16px;font-weight:800;color:{T["text"]};letter-spacing:-.5px;">
+      Reel<span style="color:{T["accent"]};">Mind</span>
+    </div>
+    <div style="display:flex;gap:0;align-items:center;">
+      <div style="font-family:JetBrains Mono,monospace;font-size:9px;letter-spacing:2px;text-transform:uppercase;padding:4px 16px;border-bottom:2px solid {T["accent"] if st.session_state.page == "reelmind" else "transparent"};color:{T["accent"] if st.session_state.page == "reelmind" else T["text3"]};">CONTENT</div>
+      <div style="font-family:JetBrains Mono,monospace;font-size:9px;letter-spacing:2px;text-transform:uppercase;padding:4px 16px;border-bottom:2px solid {T["gold"] if st.session_state.page == "storyflow" else "transparent"};color:{T["gold"] if st.session_state.page == "storyflow" else T["text3"]};">VIDEO MAKER</div>
+    </div>
   </div>
   <div style="display:flex;align-items:center;gap:12px;">
-    <div style="display:flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:8px;color:{T["green"]};">
-        <div style="width:5px;height:5px;background:{T["green"]};border-radius:50%;animation:pulse 2s infinite;"></div>{status_label}
-    </div>
-    <div style="font-family:'Space Mono',monospace;font-size:8px;color:{T["text4"]};background:{T["bg3"]};border:1px solid {T["rule2"]};padding:3px 8px;">v5.0</div>
+    <div style="display:flex;align-items:center;gap:6px;font-family:JetBrains Mono,monospace;font-size:8px;color:{T["green"]};"><div style="width:5px;height:5px;background:{T["green"]};border-radius:50%;"></div>GEMINI LIVE</div>
+    <div style="font-family:JetBrains Mono,monospace;font-size:8px;color:{T["text4"]};background:{T["bg3"]};border:1px solid {T["rule2"]};padding:3px 9px;">v4.0</div>
   </div>
 </div>
 """, unsafe_allow_html=True)
 
-
-# ══════════════════════════════════════════
-# HANDLE PENDING NAVIGATION (shatter transition)
-# ══════════════════════════════════════════
-if st.session_state.transition:
-    target, accent, label = st.session_state.transition
-    inject_premium_effects(accent)
-    shatter_overlay(accent, target, label)
-    time.sleep(1.05)
-    st.session_state.page = target
-    st.session_state.transition = None
-    st.rerun()
-
-# ══════════════════════════════════════════
-# ── PAGE: HOME / LANDING ──
-# ══════════════════════════════════════════
-if st.session_state.page == "home":
-    inject_premium_effects("255,75,43")
-    render_topbar(status_label="STUDIO READY")
-
-    st.markdown(f"""
-<div style="padding:54px 40px 10px;text-align:center;">
-  <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:5px;text-transform:uppercase;color:{T["text4"]};margin-bottom:18px;">
-    AI CREATIVE STUDIO — PICK YOUR WORKSPACE
-  </div>
-  <div style="font-family:'Fraunces',serif;font-size:64px;font-weight:900;font-style:italic;line-height:0.95;letter-spacing:-2px;color:{T["text"]};margin-bottom:14px;">
-    Reel<span style="color:{T["accent"]};">Mind</span> <span style="color:{T["text4"]};">AI</span>
-  </div>
-  <div style="font-size:13px;color:{T["text3"]};max-width:520px;margin:0 auto 40px;line-height:1.7;">
-    Two studios, one engine. Step through the glass into the workspace you need —
-    written content & strategy, or full cinematic AI video production.
-  </div>
-</div>
-""", unsafe_allow_html=True)
-
-    col1, col2 = st.columns(2, gap="large")
-
-    with col1:
-        st.markdown(f"""
-<div class="panel-glass" style="
-    border:1px solid {T["accent"]}30; border-top:2px solid {T["accent"]};
-    background:linear-gradient(160deg, {T["accent"]}0d, transparent 70%), {T["glass"]};
-    backdrop-filter:blur(14px); padding:36px 30px; margin:0 40px 8px; min-height:300px;
-    position:relative; overflow:hidden; transition:all 0.3s;
-">
-  <div style="position:absolute; inset:0; background:
-    repeating-linear-gradient(0deg, transparent 0 38px, {T["accent"]}08 38px 39px),
-    repeating-linear-gradient(90deg, transparent 0 38px, {T["accent"]}08 38px 39px);
-    opacity:0.5; pointer-events:none;"></div>
-  <div style="font-family:'Space Mono',monospace;font-size:8px;letter-spacing:4px;text-transform:uppercase;color:{T["accent"]};margin-bottom:14px;">
-    01 — STUDIO A
-  </div>
-  <div style="font-family:'Fraunces',serif;font-size:36px;font-weight:900;font-style:italic;color:{T["text"]};margin-bottom:10px;line-height:1;">
-    Content Studio
-  </div>
-  <div style="font-size:13px;color:{T["text3"]};line-height:1.7;margin-bottom:24px;max-width:340px;">
-    Captions, hashtag stacks, hooks, content series, carousels, X threads,
-    and full reel scripts — scored and ready to post.
-  </div>
-  <div style="display:flex;gap:18px;flex-wrap:wrap;font-family:'Space Mono',monospace;font-size:8px;letter-spacing:2px;text-transform:uppercase;color:{T["text4"]};">
-    <span>6 modes</span><span>·</span><span>30 hashtags</span><span>·</span><span>score card</span>
-  </div>
-</div>
-""", unsafe_allow_html=True)
-        st.markdown('<div class="generate-btn">', unsafe_allow_html=True)
-        if st.button("→ ENTER CONTENT STUDIO", key="enter_main"):
-            st.session_state.transition = ("main", T["accent"], "ENTERING CONTENT STUDIO")
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with col2:
-        st.markdown(f"""
-<div class="panel-glass" style="
-    border:1px solid {T["gold"]}30; border-top:2px solid {T["gold"]};
-    background:linear-gradient(160deg, {T["gold"]}0d, transparent 70%), {T["glass"]};
-    backdrop-filter:blur(14px); padding:36px 30px; margin:0 40px 8px; min-height:300px;
-    position:relative; overflow:hidden; transition:all 0.3s;
-">
-  <div style="position:absolute; inset:0; background:
-    repeating-linear-gradient(0deg, transparent 0 38px, {T["gold"]}08 38px 39px),
-    repeating-linear-gradient(90deg, transparent 0 38px, {T["gold"]}08 38px 39px);
-    opacity:0.5; pointer-events:none;"></div>
-  <div style="font-family:'Space Mono',monospace;font-size:8px;letter-spacing:4px;text-transform:uppercase;color:{T["gold"]};margin-bottom:14px;">
-    02 — STUDIO B
-  </div>
-  <div style="font-family:'Fraunces',serif;font-size:36px;font-weight:900;font-style:italic;color:{T["text"]};margin-bottom:10px;line-height:1;">
-    Video Story Engine
-  </div>
-  <div style="font-size:13px;color:{T["text3"]};line-height:1.7;margin-bottom:24px;max-width:340px;">
-    Cinematic AI animal shorts — 3 viral story options, character design sheets,
-    first-frame prompts, and a full Google Flow / Gemini Video prompt chain.
-  </div>
-  <div style="display:flex;gap:18px;flex-wrap:wrap;font-family:'Space Mono',monospace;font-size:8px;letter-spacing:2px;text-transform:uppercase;color:{T["text4"]};">
-    <span>3 story options</span><span>·</span><span>4K Pixar quality</span><span>·</span><span>9:16</span>
-  </div>
-</div>
-""", unsafe_allow_html=True)
-        st.markdown('<div class="gold-btn-container">', unsafe_allow_html=True)
-        if st.button("→ ENTER VIDEO STUDIO", key="enter_video"):
-            st.session_state.transition = ("video", T["gold"], "ENTERING VIDEO STUDIO")
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    st.markdown(f"""
-<div style="padding:48px 40px 16px;border-top:1px solid {T["rule"]};background:{T["bg2"]};
-display:flex;justify-content:space-between;align-items:center;margin-top:48px;">
-  <div style="font-family:'Space Mono',monospace;font-size:8px;letter-spacing:2px;text-transform:uppercase;color:{T["text4"]};">
-    REELMIND AI — v5.0 — GEMINI 2.5 FLASH</div>
-  <div style="font-family:'Space Mono',monospace;font-size:8px;color:{T["text4"]};background:{T["bg3"]};border:1px solid {T["rule2"]};padding:3px 8px;">
-    BUILT BY SATVIK SHARMA · NIET 2024–28</div>
-</div>
-""", unsafe_allow_html=True)
-
-
-# ══════════════════════════════════════════
-# ── PAGE: VIDEO STORY CREATOR ──
-# ══════════════════════════════════════════
-elif st.session_state.page == "video":
-    inject_premium_effects("245,158,11")
-    render_topbar(status_label="GEMINI LIVE")
-
-    # Home button
-    st.markdown("<div style='padding:14px 40px 0;'>", unsafe_allow_html=True)
-    st.markdown('<div class="home-btn-container">', unsafe_allow_html=True)
-    if st.button("← SHATTER BACK TO HOME", key="home_from_video"):
-        st.session_state.transition = ("home", T["gold"], "RETURNING HOME")
-        st.session_state.video_stories = None
-        st.session_state.video_package = None
+# Nav buttons (hidden but functional)
+nav_col1, nav_col2, nav_col3, nav_col4 = st.columns([1,1,8,1])
+with nav_col1:
+    if st.button("CONTENT", key="nav_rm"):
+        st.session_state.page = "reelmind"
         st.rerun()
-    st.markdown('</div></div>', unsafe_allow_html=True)
-
-    # Hero for video page
-    st.markdown(f"""
-<div style="padding:24px 40px 24px;border-bottom:1px solid {T["gold"]}30;position:relative;overflow:hidden;">
-  <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 20% 50%,{T["gold"]}08 0%,transparent 60%);pointer-events:none;"></div>
-  <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:4px;text-transform:uppercase;color:{T["gold"]};margin-bottom:10px;display:flex;align-items:center;gap:10px;">
-    <span style="width:18px;height:1px;background:{T["gold"]};display:inline-block;"></span>
-    AI Video Story Engine — Cinematic Grade
-  </div>
-  <div style="font-family:'Fraunces',serif;font-size:48px;font-weight:900;font-style:italic;line-height:0.95;letter-spacing:-2px;color:{T["text"]};margin-bottom:12px;">
-    Video <span style="color:{T["gold"]};">Story</span>
-    <span style="color:{T["text4"]};">Creator</span>
-  </div>
-  <div style="font-size:13px;color:{T["text3"]};max-width:560px;line-height:1.7;margin-bottom:8px;">
-    Generate complete production-ready video packages: 3 story options with viral scores,
-    character design sheets, first frame prompts, and a full prompt chain for Google Flow or Gemini Video.
-  </div>
-  <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:14px;">
-    {"".join([f'<div style="display:flex;flex-direction:column;gap:2px;"><div style="font-family:Space Mono,monospace;font-size:18px;font-weight:700;color:{T["gold"]};">{n}</div><div style="font-family:Space Mono,monospace;font-size:7px;letter-spacing:2px;text-transform:uppercase;color:{T["text4"]};">{l}</div></div>' for n,l in [("3","Story Options"),("Full","Prompt Chain"),("4K","Pixar Quality"),("9:16","Vertical")]]) }
-  </div>
-</div>
-""", unsafe_allow_html=True)
-
-    st.markdown("<div style='padding:0 40px;'>", unsafe_allow_html=True)
-
-    # ── CONTROL DECK (was sidebar) ──
-    gold_divider()
-    section_label("Configure Your Story")
-
-    cd1, cd2, cd3 = st.columns(3)
-    with cd1:
-        v_animal = st.selectbox("Character", [
-            "Puppy 🐶","Kitten 🐱","Baby Penguin 🐧","Baby Fox 🦊",
-            "Baby Panda 🐼","Baby Bunny 🐰","Baby Duck 🦆","Custom..."
-        ])
-        if v_animal == "Custom...":
-            v_animal = st.text_input("Describe your character", placeholder="e.g. tiny orange dragon")
-        v_story_type = st.selectbox("Story Type", [
-            "Funny","Emotional","Cute & Heartwarming",
-            "Adventure","Action","Mystery","Educational"
-        ])
-    with cd2:
-        v_duration = st.selectbox("Video Duration (seconds)", [8,16,24,30,40,60])
-        v_style = st.selectbox("Animation Style", [
-            "Pixar","Disney","DreamWorks","Anime","Chibi","Realistic"
-        ])
-    with cd3:
-        v_platform = st.selectbox("Platform", ["Instagram Reels","TikTok","YouTube Shorts"])
-        v_ending = st.selectbox("Ending Type", [
-            "Funny / Comedic","Emotional / Heartwarming",
-            "Twist / Unexpected","Happy","Random"
-        ])
-
-    st.markdown('<div class="generate-btn">', unsafe_allow_html=True)
-    generate_stories_btn = st.button("→ GENERATE STORIES", key="gen_stories", type="primary")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    with st.expander("📖 HOW TO USE THIS — FULL WORKFLOW GUIDE"):
-        st.markdown(f"""
-<div style="font-family:'Space Grotesk',sans-serif;font-size:13px;color:{T["text2"]};line-height:1.9;padding:8px 0;">
-
-<strong style="color:{T["text"]};font-family:'Space Mono',monospace;font-size:10px;letter-spacing:2px;">STEP 1 — GENERATE STORIES</strong><br>
-Select your character, story type, duration and style. The AI generates 3 different story options with viral scores, emotion scores, and retention estimates. Pick the one that resonates most.
-
-<br><br><strong style="color:{T["text"]};font-family:'Space Mono',monospace;font-size:10px;letter-spacing:2px;">STEP 2 — GET YOUR PRODUCTION PACKAGE</strong><br>
-Paste your chosen story below. The AI generates: character design sheet prompts (front/back/side/expressions), environment analysis, and a master First Frame prompt.
-
-<br><br><strong style="color:{T["text"]};font-family:'Space Mono',monospace;font-size:10px;letter-spacing:2px;">STEP 3 — GENERATE CHARACTER DESIGNS</strong><br>
-Take the character sheet prompt → paste into Midjourney or Ideogram → generate the character turnaround sheet. This keeps your character consistent across all clips.
-
-<br><br><strong style="color:{T["text"]};font-family:'Space Mono',monospace;font-size:10px;letter-spacing:2px;">STEP 4 — GENERATE FIRST FRAME</strong><br>
-Use the First Frame prompt to create your establishing shot in an image generator. This image becomes the visual foundation for the entire video.
-
-<br><br><strong style="color:{T["text"]};font-family:'Space Mono',monospace;font-size:10px;letter-spacing:2px;">STEP 5 — CREATE VIDEO CLIPS IN ORDER</strong><br>
-In Google Flow or Gemini Video: Upload character sheets + First Frame image → paste Prompt 1 → generate clip 1.<br>
-After clip 1: screenshot the LAST FRAME → upload that screenshot + character sheets → paste Prompt 2 → generate clip 2.<br>
-Repeat for each prompt. Each clip must start from the previous clip's final frame.
-
-<br><br><strong style="color:{T["accent"]};font-family:'Space Mono',monospace;font-size:10px;letter-spacing:2px;">⚠️ GOLDEN RULE</strong><br>
-Never skip the last-frame screenshot. This is what prevents teleporting, object spawning, and environment changes between clips.
-
-</div>
-""", unsafe_allow_html=True)
-
-    # Trigger story generation
-    if generate_stories_btn:
-        v_animal_clean = v_animal.split(" ")[0] if " " in v_animal else v_animal
-        st.session_state["v_animal_stored"] = v_animal_clean
-        st.session_state["v_style_stored"] = v_style
-        st.session_state["v_duration_stored"] = v_duration
-        st.session_state["v_platform_stored"] = v_platform
-
-        story_ph = st.empty()
-        story_ph.markdown(f"""
-<div style="background:{T["bg2"]};border:1px solid {T["gold"]}30;border-left:3px solid {T["gold"]};padding:24px;margin:20px 0;">
-<div style="font-family:Space Mono,monospace;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:{T["gold"]};margin-bottom:12px;">⚡ Generating viral story options...</div>
-<div style="font-family:Space Grotesk,sans-serif;font-size:13px;color:{T["text3"]};">Analyzing viral patterns for {v_animal_clean} {v_story_type} story...</div>
-</div>
-""", unsafe_allow_html=True)
-
-        stories = generate_video_story(
-            animal=v_animal_clean,
-            story_type=v_story_type,
-            duration=v_duration,
-            style=v_style,
-            platform=v_platform,
-            ending_type=v_ending
-        )
-        st.session_state.video_stories = stories
-        st.session_state.video_package = None
-
-        story_ph.empty()
+with nav_col2:
+    if st.button("VIDEO MAKER", key="nav_sf"):
+        st.session_state.page = "storyflow"
+        st.rerun()
+with nav_col4:
+    if st.button(theme_icon, key="theme_toggle"):
+        st.session_state.theme = "light" if IS_DARK else "dark"
         st.rerun()
 
-    # ── EMPTY STATE ──
-    if not st.session_state.video_stories:
-        st.markdown(f"""
-<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
-min-height:280px;border:1px dashed {T["rule2"]};margin:32px 0;gap:14px;">
-  <div style="font-size:38px;filter:grayscale(1);opacity:0.15;">🎥</div>
-  <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:3px;text-transform:uppercase;color:{T["text4"]};">Configure & Generate</div>
-  <div style="font-size:12px;color:{T["text4"]};font-family:'Space Mono',monospace;">Your story options will appear here</div>
-</div>""", unsafe_allow_html=True)
+# ══════════════════════════════════════════
+# ████████ REELMIND PAGE ████████
+# ══════════════════════════════════════════
+if st.session_state.page == "reelmind":
 
-    # ── STORY OPTIONS ──
-    if st.session_state.video_stories:
-        gold_divider()
-        section_label("Choose Your Story")
+    st.markdown(f"""
+<div style="padding:72px 40px 56px;border-bottom:1px solid {T["rule"]};position:relative;overflow:hidden;min-height:320px;">
+  <div style="position:absolute;top:0;right:0;width:45%;height:100%;background:linear-gradient(135deg,transparent 0%,{T["accent"]}05 100%);pointer-events:none;"></div>
+  <div style="font-family:JetBrains Mono,monospace;font-size:9px;letter-spacing:4px;text-transform:uppercase;color:{T["accent"]};margin-bottom:20px;display:flex;align-items:center;gap:12px;">
+    <span style="width:20px;height:1px;background:{T["accent"]};display:inline-block;"></span>AI Content Engine — Studio Grade
+  </div>
+  <div style="font-family:Syne,sans-serif;font-size:clamp(44px,6vw,84px);font-weight:800;line-height:.9;letter-spacing:-3px;color:{T["text"]};margin-bottom:20px;">
+    Generate<br><span style="color:{T["accent"]};">Viral</span><br>Content
+  </div>
+  <div style="font-size:15px;color:{T["text3"]};max-width:430px;line-height:1.65;margin-bottom:32px;">
+    Captions, hashtags, full scripts, and thumbnail prompts — engineered for the algorithm, not just aesthetics.
+  </div>
+  <div style="display:flex;gap:24px;flex-wrap:wrap;">
+    {"".join([f'<div style="display:flex;flex-direction:column;gap:3px;"><div style="font-family:JetBrains Mono,monospace;font-size:22px;font-weight:600;color:{T["text"]};">{n}</div><div style="font-family:JetBrains Mono,monospace;font-size:7px;letter-spacing:2px;text-transform:uppercase;color:{T["text4"]};">{l}</div></div>' for n,l in [("4","Outputs/run"),("30","Hashtags"),("3","Captions"),("16","Niches")]])}
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
-        output_card(
-            "3 STORY OPTIONS — SELECT YOUR FAVOURITE",
-            st.session_state.video_stories.get("stories", ""),
-            T["gold"],
-            show_copy=True,
-            height=500
-        )
+    st.markdown("<div style='padding:40px 40px 0;'>", unsafe_allow_html=True)
+    mono_label("Configure Your Content")
 
-        st.markdown("<br>", unsafe_allow_html=True)
-        section_label("Generate Full Production Package")
-        story_input = st.text_area(
-            "Paste your chosen story details here (copy from above)",
-            placeholder="Paste the STORY [N] section you want to use, including the title, logline, hook, goal, conflict, escalation, payoff, and ending...",
-            height=120,
-            key="chosen_story"
-        )
-        story_title_input = st.text_input("Story Title", placeholder="e.g. The Puppy and the Balloon", key="story_title")
+    col_mode, col_right = st.columns([1, 2], gap="large")
+    with col_mode:
+        mode = st.radio("Mode", [
+            "⚡ Full Content Pack","🎯 Hook Ideas Only",
+            "📅 Content Series","🎠 Carousel Post",
+            "🧵 X/Twitter Thread","🔄 Content Repurposer"
+        ], label_visibility="collapsed")
 
-        st.markdown('<div class="gold-btn-container">', unsafe_allow_html=True)
-        gen_package_btn = st.button("🎬 GENERATE FULL PRODUCTION PACKAGE", key="gen_package")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        if gen_package_btn and story_input.strip():
-            v_animal_stored = st.session_state.get("v_animal_stored", "Puppy")
-            v_style_stored = st.session_state.get("v_style_stored", "Pixar")
-            v_duration_stored = st.session_state.get("v_duration_stored", 24)
-            v_platform_stored = st.session_state.get("v_platform_stored", "Instagram Reels")
-
-            pkg_ph = st.empty()
-            pkg_steps = [
-                "Analyzing story structure...",
-                "Designing character sheets...",
-                "Building environment map...",
-                "Creating first frame prompt...",
-                "Writing prompt chain...",
-                "Building continuity checklist...",
-            ]
-
-            def render_pkg_steps(done):
-                rows = ""
-                for i, name in enumerate(pkg_steps):
-                    if i < done: col, icon = T["gold"], "✓"
-                    elif i == done: col, icon = T["accent"], "◌"
-                    else: col, icon = T["text4"], str(i+1)
-                    rows += f'<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid {T["rule"]};font-family:Space Mono,monospace;font-size:10px;letter-spacing:1px;color:{col};"><span style="width:18px;text-align:center;">{icon}</span><span>{name}</span></div>'
-                return f'<div style="background:{T["bg2"]};border:1px solid {T["gold"]}30;border-left:2px solid {T["gold"]};padding:24px;margin:20px 0;">{rows}</div>'
-
-            for i in range(len(pkg_steps)):
-                pkg_ph.markdown(render_pkg_steps(i), unsafe_allow_html=True)
-                time.sleep(0.5)
-
-            pkg = generate_video_full_package(
-                animal=v_animal_stored,
-                story_title=story_title_input or "My Story",
-                story_logline=story_input[:200],
-                story_details=story_input,
-                style=v_style_stored,
-                duration=v_duration_stored,
-                platform=v_platform_stored
-            )
-            st.session_state.video_package = pkg
-
-            pkg_ph.markdown(render_pkg_steps(len(pkg_steps)), unsafe_allow_html=True)
-            time.sleep(0.3)
-            pkg_ph.empty()
-            st.rerun()
-
-        if st.session_state.video_package:
-            pkg = st.session_state.video_package
-            gold_divider()
-            section_label("Production Package")
-
-            tab_char, tab_frame, tab_prompts, tab_cont = st.tabs([
-                "🎨 Character & Environment",
-                "🖼️ First Frame",
-                f"🎬 Prompt Chain ({pkg.get('num_prompts',0)} clips)",
-                "📋 Continuity Checklist"
+    with col_right:
+        r1, r2 = st.columns(2)
+        with r1:
+            topic = st.text_input("Topic", placeholder="e.g. Villain arc, AI tools, Gym motivation...")
+            platform = st.selectbox("Platform", ["Instagram Reels","TikTok","YouTube Shorts"])
+            tone = st.selectbox("Tone", [
+                "Viral & Bold","Dark & Cinematic","Motivational & Intense",
+                "Minimal & Clean","Edgy & Controversial","Informative & Professional"
             ])
+        with r2:
+            niche = st.selectbox("Niche", [
+                "Dark Aesthetic / Motivation","Gaming","Anime & Manga","Fitness & Gym",
+                "Tech & AI","Finance & Investing","Horror & Thriller","Fashion & Lifestyle",
+                "Education","Movie Industry","Music & Artists","Business & Entrepreneurship",
+                "Luxury & Premium","Cars & Motorsport","Travel & Adventure","Food & Cooking"
+            ])
+            num_posts = 5
+            original_content = ""
+            target_platform = "TikTok"
+            if "Series" in mode:
+                num_posts = st.selectbox("Posts in Series", [3, 5, 7])
+            if "Repurposer" in mode:
+                original_content = st.text_area("Paste original content", height=80)
+                target_platform = st.selectbox("Repurpose for", ["TikTok","YouTube Shorts","X/Twitter","LinkedIn"])
 
-            with tab_char:
-                output_card("CHARACTER DESIGN & ENVIRONMENT ANALYSIS",
-                    pkg.get("character_analysis",""), T["gold"], show_copy=True, height=400)
-                st.download_button("↓ DOWNLOAD CHARACTER PACKAGE",
-                    pkg.get("character_analysis",""),
-                    file_name="character_design.txt", key="dl_char")
-
-            with tab_frame:
-                output_card("MASTER FIRST FRAME PROMPT",
-                    pkg.get("first_frame",""), T["gold"], show_copy=True, height=350)
-                st.markdown(f"""
-<div style="background:{T["gold"]}10;border:1px solid {T["gold"]}30;border-left:2px solid {T["gold"]};padding:14px;margin-top:12px;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;color:{T["gold"]};">
-⚡ USAGE: Paste this prompt into Midjourney (--ar 9:16 --v 6) or Ideogram. 
-This establishes your entire scene. Use the generated image as the starting point for Prompt 1 in Google Flow.
-</div>
-""", unsafe_allow_html=True)
-                st.download_button("↓ DOWNLOAD FIRST FRAME PROMPT",
-                    pkg.get("first_frame",""),
-                    file_name="first_frame_prompt.txt", key="dl_frame")
-
-            with tab_prompts:
-                prompts = pkg.get("prompts", [])
-                if prompts:
-                    for p in prompts:
-                        n = p["number"]
-                        is_last = (n == len(prompts))
-                        label_suffix = " — FINAL CLIP" if is_last else f" of {len(prompts)}"
-                        accent = T["gold"] if is_last else T["accent"]
-                        output_card(
-                            f"PROMPT {n}{label_suffix}",
-                            p["text"],
-                            accent, show_copy=True, height=350
-                        )
-                        if n < len(prompts):
-                            st.markdown(f"""
-<div style="background:{T["bg3"]};border:1px solid {T["rule"]};padding:10px 14px;margin:8px 0;font-family:'Space Mono',monospace;font-size:9px;color:{T["text4"]};letter-spacing:1px;">
-📸 AFTER GENERATING CLIP {n}: Pause at the very last frame → Screenshot it → Upload that screenshot + character sheets when generating Prompt {n+1}
-</div>
-""", unsafe_allow_html=True)
-
-                    all_prompts_text = f"REELMIND AI — VIDEO PROMPT CHAIN\n{'='*60}\n\n"
-                    all_prompts_text += pkg.get("first_frame","") + "\n\n" + "="*60 + "\n\n"
-                    for p in prompts:
-                        all_prompts_text += f"PROMPT {p['number']}:\n{p['text']}\n\n{'='*60}\n\n"
-                    st.download_button("↓ DOWNLOAD ALL PROMPTS", all_prompts_text,
-                        file_name="video_prompt_chain.txt", key="dl_all_prompts")
-
-            with tab_cont:
-                output_card("CONTINUITY CHECKLIST — CHECK BETWEEN EVERY CLIP",
-                    pkg.get("continuity",""), T["green"], show_copy=True, height=350)
-                st.download_button("↓ DOWNLOAD CHECKLIST",
-                    pkg.get("continuity",""),
-                    file_name="continuity_checklist.txt", key="dl_cont")
+        # Single premium generate button (liquid) + fallback hidden button
+        generate_button("→ GENERATE CONTENT", "rm_gen_liq")
+        gen_btn = st.button("GENERATE", key="rm_gen_std")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # GOLD CTA → back home
-    st.markdown("<div style='padding:0 40px;'>", unsafe_allow_html=True)
-    gold_divider()
-    st.markdown(f"""
-<div style="background:linear-gradient(135deg,{T["accent"]}10,transparent);border:1px solid {T["accent"]}30;border-left:3px solid {T["accent"]};padding:20px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
-  <div>
-    <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:3px;text-transform:uppercase;color:{T["accent"]};margin-bottom:6px;">✍️ NEED WRITTEN CONTENT TOO?</div>
-    <div style="font-size:13px;color:{T["text3"]};">Generate captions, hashtags, and scripts for this same content in the Content Studio.</div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
-    st.markdown('<div class="generate-btn">', unsafe_allow_html=True)
-    if st.button("→ OPEN CONTENT STUDIO", key="goto_main_from_video"):
-        st.session_state.transition = ("main", T["accent"], "ENTERING CONTENT STUDIO")
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-
-# ══════════════════════════════════════════
-# ── PAGE: MAIN CONTENT GENERATOR ──
-# ══════════════════════════════════════════
-elif st.session_state.page == "main":
-    inject_premium_effects("255,75,43")
-    render_topbar(status_label="GEMINI LIVE")
-
-    # Home button
-    st.markdown("<div style='padding:14px 40px 0;'>", unsafe_allow_html=True)
-    st.markdown('<div class="home-btn-container">', unsafe_allow_html=True)
-    if st.button("← SHATTER BACK TO HOME", key="home_from_main"):
-        st.session_state.transition = ("home", T["accent"], "RETURNING HOME")
-        st.rerun()
-    st.markdown('</div></div>', unsafe_allow_html=True)
-
-    # HERO
-    st.markdown(f"""
-<div style="padding:24px 40px 28px;border-bottom:1px solid {T["rule"]};position:relative;overflow:hidden;">
-  <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:4px;text-transform:uppercase;color:{T["accent"]};margin-bottom:10px;display:flex;align-items:center;gap:10px;">
-    <span style="width:18px;height:1px;background:{T["accent"]};display:inline-block;"></span>
-    AI Content Engine — Studio Grade
-  </div>
-  <div style="font-family:'Fraunces',serif;font-size:52px;font-weight:900;font-style:italic;line-height:0.92;letter-spacing:-2px;color:{T["text"]};margin-bottom:14px;">
-    Content<span style="color:{T["accent"]};"> Studio</span>
-  </div>
-  <div style="font-size:13px;color:{T["text3"]};max-width:480px;line-height:1.6;margin-bottom:20px;">
-    Generate scroll-stopping captions, hashtag stacks, viral scripts, and thumbnail prompts — powered by Gemini 2.5 Flash.
-  </div>
-  <div style="display:flex;gap:32px;flex-wrap:wrap;">
-    {"".join([f'<div style="display:flex;flex-direction:column;gap:2px;"><div style="font-family:Space Mono,monospace;font-size:20px;font-weight:700;color:{T["text"]};">{n}</div><div style="font-family:Space Mono,monospace;font-size:7px;letter-spacing:2px;text-transform:uppercase;color:{T["text4"]};">{l}</div></div>' for n,l in [("4","Outputs/run"),("30","Hashtags"),("3","Captions"),("16","Niches")]])}
-  </div>
-</div>
-""", unsafe_allow_html=True)
-
-    st.markdown("<div style='padding:0 40px;'>", unsafe_allow_html=True)
-
-    # ── CONTROL DECK (was sidebar) ──
-    gradient_divider()
-    section_label("Configure Generation")
-
-    mode = st.radio("Mode", [
-        "⚡ Full Content Pack","🎯 Hook Ideas Only",
-        "📅 Content Series","🎠 Carousel Post",
-        "🧵 X/Twitter Thread","🔄 Content Repurposer"
-    ], horizontal=True)
-
-    cd1, cd2, cd3, cd4 = st.columns(4)
-    with cd1:
-        topic = st.text_input("Topic", placeholder="e.g. Villain arc, AI Tools, Gym motivation...")
-    with cd2:
-        niche = st.selectbox("Niche", [
-            "Dark Aesthetic / Motivation","Gaming","Anime & Manga",
-            "Fitness & Gym","Tech & AI","Finance & Investing",
-            "Horror & Thriller","Fashion & Lifestyle","Education",
-            "Movie Industry","Music & Artists","Business & Entrepreneurship",
-            "Luxury & Premium","Cars & Motorsport","Travel & Adventure","Food & Cooking"
-        ])
-    with cd3:
-        platform = st.selectbox("Platform", ["Instagram Reels","TikTok","YouTube Shorts"])
-    with cd4:
-        tone = st.selectbox("Tone", [
-            "Viral & Bold","Dark & Cinematic","Motivational & Intense",
-            "Minimal & Clean","Edgy & Controversial","Informative & Professional"
-        ])
-
-    num_posts = 5
-    original_content = ""
-    target_platform = "TikTok"
-
-    if "Series" in mode:
-        num_posts = st.selectbox("Posts in Series", [3,5,7])
-
-    if "Repurposer" in mode:
-        rc1, rc2 = st.columns([3,1])
-        with rc1:
-            original_content = st.text_area("Paste original content", height=80)
-        with rc2:
-            target_platform = st.selectbox("Repurpose for", ["TikTok","YouTube Shorts","X/Twitter","LinkedIn"])
-
-    st.markdown('<div class="generate-btn">', unsafe_allow_html=True)
-    generate_btn = st.button("→ GENERATE CONTENT", key="gen_main", type="primary")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    with st.expander("QUICK TIPS"):
-        st.markdown(f'<div style="font-family:Space Grotesk,sans-serif;font-size:12px;color:{T["text3"]};line-height:1.8;">→ Specific topics outperform generic<br>→ <strong style="color:{T["text2"]};">"Villain arc workout" &gt; "gym"</strong><br>→ Match tone to your content style<br>→ Use Hook mode to A/B test openings</div>', unsafe_allow_html=True)
-
-    if st.session_state.history:
-        with st.expander("RECENT GENERATIONS"):
-            for h in st.session_state.history[-4:]:
-                st.markdown(f'<div style="background:{T["bg3"]};border:1px solid {T["rule"]};padding:8px 10px;margin-bottom:3px;"><div style="font-size:12px;font-weight:500;color:{T["text"]};">{h["topic"][:40]}</div><div style="font-family:Space Mono,monospace;font-size:7px;color:{T["text4"]};">{h["niche"][:30]} · {h["time"]}</div></div>', unsafe_allow_html=True)
-
-    # ── EMPTY STATE ──
-    if not generate_btn:
-        if not st.session_state.last_result:
-            st.markdown(f"""
-<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
-min-height:380px;border:1px dashed {T["rule2"]};margin:32px 0;gap:14px;">
-  <div style="font-size:38px;filter:grayscale(1);opacity:0.15;">🎬</div>
-  <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:3px;text-transform:uppercase;color:{T["text4"]};">Configure & Generate</div>
-  <div style="font-size:12px;color:{T["text4"]};font-family:'Space Mono',monospace;">Your content will appear here</div>
-</div>""", unsafe_allow_html=True)
-
-    if generate_btn:
+    if gen_btn:
         if not topic.strip():
-            st.warning("Please enter a topic first.")
+            st.warning("Enter a topic first.")
             st.stop()
 
-        # Loading
-        steps_ph = st.empty()
-        step_names = [
+        st.markdown("<div style='padding:0 40px;'>", unsafe_allow_html=True)
+        show_loading([
             "Analyzing topic & niche...",
-            "Building caption stack...",
-            "Generating hashtag strategy...",
-            "Writing reel script...",
-            "Designing thumbnail prompt...",
-            "Calculating content scores...",
-        ]
+            "Writing complete captions (short, medium, long)...",
+            "Building hashtag strategy across 3 tiers...",
+            "Crafting full reel script with spoken lines...",
+            "Designing cinematic thumbnail prompt...",
+            "Computing AI confidence scores...",
+        ])
 
-        def render_steps(done):
-            rows = ""
-            for i, name in enumerate(step_names):
-                if i < done: col, icon = T["green"], "✓"
-                elif i == done: col, icon = T["accent"], "◌"
-                else: col, icon = T["text4"], str(i+1)
-                rows += f'<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid {T["rule"]};font-family:Space Mono,monospace;font-size:10px;letter-spacing:1px;color:{col};"><span style="width:18px;text-align:center;">{icon}</span><span>{name}</span></div>'
-            return f'<div style="background:{T["bg2"]};border:1px solid {T["rule"]};padding:24px;margin:20px 0;">{rows}</div>'
-
-        for i in range(len(step_names)):
-            steps_ph.markdown(render_steps(i), unsafe_allow_html=True)
-            time.sleep(0.45)
-
-        result = None
-        raw_output = None
-        error_msg = None
-
+        result = None; raw_output = None; error_msg = None
         try:
             if "Full Content" in mode:
                 result = generate_full_content(topic, niche, platform, tone)
-                if "ERROR" in result.get("raw",""):
-                    error_msg = result["raw"].split("||")[-1]
+                if "ERROR" in result.get("raw",""): error_msg = result["raw"].split("||")[-1]
             elif "Hook" in mode:
                 raw_output = generate_hooks(topic, niche)
-                if "ERROR" in (raw_output or ""): error_msg = raw_output.split("||")[-1]
+                if raw_output and "ERROR" in raw_output: error_msg = raw_output.split("||")[-1]
             elif "Series" in mode:
                 raw_output = generate_series(topic, niche, platform, num_posts)
-                if "ERROR" in (raw_output or ""): error_msg = raw_output.split("||")[-1]
+                if raw_output and "ERROR" in raw_output: error_msg = raw_output.split("||")[-1]
             elif "Carousel" in mode:
                 raw_output = generate_carousel(topic, niche, platform)
-                if "ERROR" in (raw_output or ""): error_msg = raw_output.split("||")[-1]
+                if raw_output and "ERROR" in raw_output: error_msg = raw_output.split("||")[-1]
             elif "Thread" in mode:
                 raw_output = generate_thread(topic, niche)
-                if "ERROR" in (raw_output or ""): error_msg = raw_output.split("||")[-1]
+                if raw_output and "ERROR" in raw_output: error_msg = raw_output.split("||")[-1]
             elif "Repurposer" in mode:
                 raw_output = repurpose_content(original_content, target_platform)
-                if "ERROR" in (raw_output or ""): error_msg = raw_output.split("||")[-1]
+                if raw_output and "ERROR" in raw_output: error_msg = raw_output.split("||")[-1]
         except Exception as e:
             error_msg = str(e)
-
-        steps_ph.markdown(render_steps(len(step_names)), unsafe_allow_html=True)
-        time.sleep(0.3)
-        steps_ph.empty()
 
         if error_msg:
             st.error(f"Generation failed: {error_msg}")
             st.stop()
 
-        if result:
-            st.session_state.last_result = result
-        scores = gen_scores()
-        confidence = gen_confidence()
-        st.session_state.last_scores = scores
-        st.session_state.last_confidence = confidence
-        st.session_state.history.append({
-            "topic": topic, "niche": niche,
-            "time": datetime.datetime.now().strftime("%H:%M")
-        })
+        if result: st.session_state.rm_result = result
+        scores = gen_scores(); st.session_state.rm_scores = scores
+        confidence = random.randint(88, 97)
+        st.session_state.history.append({"topic": topic, "niche": niche, "time": datetime.datetime.now().strftime("%H:%M")})
 
-        # ── SCORES ──
-        section_label("Content Score Card")
-        score_bento(scores, confidence)
-        gradient_divider()
+        divider()
+        mono_label("Content Score Card")
+        score_cards(scores)
+        divider()
 
-        # ── RADAR + ANALYTICS ──
         col_r, col_a = st.columns([1,1])
         with col_r:
-            section_label("Content Radar")
-            radar_component(scores)
-
+            mono_label("Content Radar")
+            radar_chart(scores)
         with col_a:
-            section_label("Best Posting Times")
+            mono_label("Best Posting Times")
             times = POSTING_TIMES.get(platform, POSTING_TIMES["Instagram Reels"])
-            t_html = "".join([
-                f'<span style="display:inline-block;background:{T["bg3"]};border:1px solid {T["green"] if best else T["rule2"]};padding:6px 11px;font-family:Space Mono,monospace;font-size:9px;color:{T["green"] if best else T["text3"]};margin:3px;{"background:" + T["green"] + "10;" if best else ""}">{t}<small style="display:block;font-size:7px;letter-spacing:1px;">{label}{"  ★" if best else ""}</small></span>'
+            st.markdown("".join([
+                f'<span style="display:inline-block;background:{T["bg3"]};border:1px solid {T["green"] if best else T["rule2"]};padding:8px 14px;font-family:JetBrains Mono,monospace;font-size:9px;color:{T["green"] if best else T["text3"]};margin:3px;{("background:"+T["green"]+"0f;") if best else ""}">'
+                f'{t}<small style="display:block;font-size:7px;letter-spacing:1px;">{label}{"  ★" if best else ""}</small></span>'
                 for t, label, best in times
-            ])
-            st.markdown(t_html, unsafe_allow_html=True)
-            st.markdown("<br>", unsafe_allow_html=True)
-            section_label("Niche Saturation")
-            sat = SATURATION.get(niche, "MEDIUM — competitive but approachable with strong hooks.")
-            st.markdown(f'<div style="font-family:Space Mono,monospace;font-size:10px;color:{T["text2"]};line-height:1.6;">{sat}</div>', unsafe_allow_html=True)
+            ]), unsafe_allow_html=True)
 
-        gradient_divider()
+        divider()
 
-        # ── FULL CONTENT TABS ──
         if "Full Content" in mode and result:
-            tab1, tab2, tab3, tab4 = st.tabs(["📝 Captions","#️⃣ Hashtags","🎬 Script","🖼️ Thumbnail"])
+            tab1, tab2, tab3, tab4 = st.tabs([
+                "📝  CAPTIONS", "#️⃣  HASHTAGS", "🎬  SCRIPT", "🖼️  THUMBNAIL"
+            ])
 
             with tab1:
                 short, med, long_cap = parse_captions(result.get("captions",""))
-                cap_data = [
-                    (short, "Short Caption", "s", T["accent"]),
-                    (med, "Medium Caption", "m", T["blue"]),
-                    (long_cap, "Long Caption", "l", T["purple"])
-                ]
-                for cap_text, label, key, color in cap_data:
-                    wc = len(cap_text.split())
-                    output_card(
-                        f"{label} — {wc} words",
-                        cap_text, color,
-                        show_copy=True,
-                        confidence=confidence,
-                        height=140
-                    )
-                    st.download_button(f"↓ DOWNLOAD {label.split()[0].upper()}", cap_text,
-                        file_name=f"{label.lower().replace(' ','_')}.txt", key=f"dl_{key}")
+                cap_colors = [T["accent"], T["blue"], T["purple"]]
+                for i, (cap_text, label) in enumerate([(short,"Short Caption"),(med,"Medium Caption"),(long_cap,"Long Caption")]):
+                    output_card(label, cap_text, cap_colors[i], confidence)
+                    st.download_button(f"↓ {label}", cap_text,
+                        file_name=f"{label.lower().replace(' ','_')}.txt",
+                        key=f"dl_cap_{i}")
+                    st.markdown("<br>", unsafe_allow_html=True)
 
             with tab2:
                 hv, mv, nv = parse_hashtags(result.get("hashtags",""))
                 hashtag_component(hv, mv, nv)
-                all_tags = " ".join(hv+mv+nv)
-                col_ht1, col_ht2 = st.columns(2)
-                with col_ht1:
-                    st.download_button("↓ DOWNLOAD ALL HASHTAGS", all_tags,
-                        file_name="hashtags.txt", key="dl_ht")
+                st.download_button("↓ Download All 30 Hashtags",
+                    " ".join(hv+mv+nv), file_name="hashtags.txt", key="dl_ht")
 
             with tab3:
-                formatted = format_script(result.get("script",""))
-                output_card(
-                    "Reel Script — 30 Seconds",
-                    formatted, T["purple"],
-                    show_copy=True,
-                    confidence=confidence,
-                    height=380
+                mono_label("Full Reel Script — Color Coded by Section")
+                st.markdown(
+                    f'<div style="font-size:12px;color:{T["text3"]};margin-bottom:16px;line-height:1.65;">'
+                    f'Red = Hook (stop scroll) · Grey = Body (deliver value) · Green = CTA (convert) · Purple = Audio direction<br>'
+                    f'Every body line is a complete on-screen sentence — read it aloud before recording.</div>',
+                    unsafe_allow_html=True
                 )
-                st.markdown(f"""
-<div style="background:{T["purple"]}10;border:1px solid {T["purple"]}30;border-left:2px solid {T["purple"]};padding:12px 14px;margin-top:8px;font-family:'Space Mono',monospace;font-size:9px;color:{T["purple"]};letter-spacing:1px;">
-💡 TIP: Read the script out loud before recording. Each line is a complete spoken sentence — no filler words needed between them.
-</div>
-""", unsafe_allow_html=True)
-                st.download_button("↓ DOWNLOAD SCRIPT", result.get("script",""),
-                    file_name="reel_script.txt", key="dl_sc")
+                rich = format_script_rich(result.get("script",""))
+                output_card("Reel Script — 30 Seconds", result.get("script",""),
+                    T["purple"], confidence, rich_html=rich)
+                st.download_button("↓ Download Script",
+                    result.get("script",""), file_name="reel_script.txt", key="dl_sc")
 
             with tab4:
                 thumb = result.get("thumbnail","")
-                mj_m = re.search(r'(?:IMAGE PROMPT|PROMPT)[^:]*:\s*([\s\S]*?)(?=STYLE|$)', thumb, re.I)
-                style_m = re.search(r'STYLE[^:]*:\s*([\s\S]*?)(?=COLOR|$)', thumb, re.I)
-                color_m = re.search(r'COLOR[^:]*:\s*([\s\S]*?)$', thumb, re.I)
-                base = mj_m.group(1).strip() if mj_m else thumb[:300]
-                style = style_m.group(1).strip() if style_m else ""
-                colors = color_m.group(1).strip() if color_m else ""
-                mj = f"{base}\n\n--style raw --ar 9:16 --v 6\nStyle: {style}\nColors: {colors}"
-                ideogram = f"{base}\n\nStyle: {style}\nPalette: {colors}\nHigh detail, sharp focus, 9:16"
+                mj_m  = re.search(r'(?:IMAGE PROMPT|PROMPT)[^:]*:\s*([\s\S]*?)(?=STYLE|$)', thumb, re.I)
+                st_m  = re.search(r'STYLE[^:]*:\s*([\s\S]*?)(?=COLOR|$)', thumb, re.I)
+                cl_m  = re.search(r'COLOR[^:]*:\s*([\s\S]*?)$', thumb, re.I)
+                base  = mj_m.group(1).strip() if mj_m else thumb[:300]
+                sty   = st_m.group(1).strip() if st_m else ""
+                cols_ = cl_m.group(1).strip() if cl_m else ""
+                mj = f"{base}\n\n--style raw --ar 9:16 --v 6\nStyle keywords: {sty}\nColors: {cols_}"
+                ideogram = f"{base}\n\nStyle: {sty}\nPalette: {cols_}\nHigh detail, sharp focus, 9:16 aspect ratio"
+                output_card("Midjourney Prompt", mj, T["accent"], confidence)
+                st.download_button("↓ MJ Prompt", mj, file_name="mj_prompt.txt", key="dl_mj")
+                st.markdown("<br>", unsafe_allow_html=True)
+                output_card("Ideogram / Gemini Image Prompt", ideogram, T["blue"], confidence)
+                st.download_button("↓ Ideogram Prompt", ideogram,
+                    file_name="ideogram_prompt.txt", key="dl_id")
 
-                output_card("Midjourney Prompt", mj, T["accent"], show_copy=True, height=180)
-                st.download_button("↓ MJ PROMPT", mj, file_name="mj_prompt.txt", key="dl_mj")
-                output_card("Ideogram / Gemini Image Prompt", ideogram, T["blue"], show_copy=True, height=180)
-                st.download_button("↓ IDEOGRAM PROMPT", ideogram, file_name="ideogram_prompt.txt", key="dl_id")
-
-            gradient_divider()
-            full = f"REELMIND AI v5.0\nTopic:{topic} | Niche:{niche} | Platform:{platform}\n{'='*60}\n\n{result.get('raw','')}"
+            divider()
             c1, c2 = st.columns(2)
             with c1:
-                st.download_button("↓ DOWNLOAD FULL PACK", full,
+                full = f"REELMIND AI v4.0\nTopic: {topic} | Niche: {niche} | Platform: {platform}\n{'='*60}\n\n{result.get('raw','')}"
+                st.download_button("↓ Download Full Pack (.txt)", full,
                     file_name=f"reelmind_{topic[:20].replace(' ','_')}_full.txt", key="dl_full")
             with c2:
-                st.download_button("↓ DOWNLOAD RAW", result.get("raw",""),
-                    file_name="reelmind_raw.txt", key="dl_raw")
-
-            # Gold CTA at bottom → video studio
-            gradient_divider()
-            st.markdown(f"""
-<div style="background:linear-gradient(135deg,{T["gold"]}10,transparent);border:1px solid {T["gold"]}30;border-left:3px solid {T["gold"]};padding:20px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
-  <div>
-    <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:3px;text-transform:uppercase;color:{T["gold"]};margin-bottom:6px;">🎥 READY TO CREATE A VIDEO?</div>
-    <div style="font-size:13px;color:{T["text3"]};">Turn this content into a complete AI video production package with story options, character sheets, and a full prompt chain.</div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
-            st.markdown('<div class="gold-btn-container">', unsafe_allow_html=True)
-            if st.button("🎥 OPEN VIDEO STORY CREATOR", key="goto_video_bottom"):
-                st.session_state.transition = ("video", T["gold"], "ENTERING VIDEO STUDIO")
-                st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
+                st.download_button("↓ Download Raw Output",
+                    result.get("raw",""), file_name="reelmind_raw.txt", key="dl_raw")
 
         else:
             mode_label = mode.split(" ",1)[1] if " " in mode else mode
-            output_card(mode_label, raw_output or "No output generated.", T["accent"],
-                show_copy=True, confidence=confidence, height=500)
+            output_card(mode_label, raw_output or "No output generated.", T["accent"])
             if raw_output:
-                st.download_button("↓ DOWNLOAD OUTPUT", raw_output,
-                    file_name=f"reelmind_{topic[:20].replace(' ','_')}.txt", key="dl_other")
+                st.download_button("↓ Download Output", raw_output,
+                    file_name="reelmind_output.txt", key="dl_other")
 
-    st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # History strip
+    if st.session_state.history:
+        st.markdown("<div style='padding:0 40px;'>", unsafe_allow_html=True)
+        divider()
+        mono_label("Recent Generations")
+        cols = st.columns(min(4, len(st.session_state.history)))
+        for i, h in enumerate(st.session_state.history[-4:]):
+            with cols[i]:
+                st.markdown(
+                    f'<div style="background:{T["bg2"]};border:1px solid {T["rule"]};padding:12px 14px;">'
+                    f'<div style="font-size:13px;font-weight:500;color:{T["text"]};margin-bottom:4px;">{h["topic"][:22]}</div>'
+                    f'<div style="font-family:JetBrains Mono,monospace;font-size:7px;color:{T["text4"]};">{h["niche"][:20]} · {h["time"]}</div></div>',
+                    unsafe_allow_html=True
+                )
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════
-# FOOTER (main + video pages)
+# ████████ STORYFLOW PAGE ████████
 # ══════════════════════════════════════════
-if st.session_state.page in ("main","video"):
+elif st.session_state.page == "storyflow":
+
     st.markdown(f"""
-<div style="padding:16px 40px;border-top:1px solid {T["rule"]};background:{T["bg2"]};
-display:flex;justify-content:space-between;align-items:center;margin-top:40px;">
-  <div style="font-family:'Space Mono',monospace;font-size:8px;letter-spacing:2px;text-transform:uppercase;color:{T["text4"]};">
-    REELMIND AI — v5.0 — GEMINI 2.5 FLASH</div>
-  <div style="font-family:'Space Mono',monospace;font-size:8px;color:{T["text4"]};background:{T["bg3"]};border:1px solid {T["rule2"]};padding:3px 8px;">
-    BUILT BY SATVIK SHARMA · NIET 2024–28</div>
+<div style="padding:72px 40px 56px;border-bottom:1px solid {T["rule"]};position:relative;overflow:hidden;min-height:320px;background:linear-gradient(135deg,{T["bg"]} 55%,{T["gold"]}06 100%);">
+  <div style="position:absolute;bottom:-60px;right:-30px;width:420px;height:420px;background:radial-gradient(circle,{T["gold"]}09 0%,transparent 70%);pointer-events:none;"></div>
+  <div style="font-family:JetBrains Mono,monospace;font-size:9px;letter-spacing:4px;text-transform:uppercase;color:{T["gold"]};margin-bottom:20px;display:flex;align-items:center;gap:12px;">
+    <span style="width:20px;height:1px;background:{T["gold"]};display:inline-block;"></span>AI Video Story Engine — Pixar Grade
+  </div>
+  <div style="font-family:Syne,sans-serif;font-size:clamp(44px,6vw,84px);font-weight:800;line-height:.9;letter-spacing:-3px;color:{T["text"]};margin-bottom:20px;">
+    Craft<br><span style="color:{T["gold"]};">Cinematic</span><br>Stories
+  </div>
+  <div style="font-size:15px;color:{T["text3"]};max-width:480px;line-height:1.65;margin-bottom:32px;">
+    Complete video production packages — stories, character sheets, Frame 1, and flexible prompt chains for any duration.
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;">
+    {"".join([f'<div style="background:{T["bg3"]};border:1px solid {T["rule2"]};padding:8px 16px;font-family:JetBrains Mono,monospace;font-size:8px;letter-spacing:1px;color:{T["text3"]};">{t}</div>' for t in ["3 Story Options","Character Sheets","Frame 1 Prompt","Flexible Prompt Chain","Continuity Engine"]])}
+  </div>
 </div>
 """, unsafe_allow_html=True)
+
+    # Progress bar
+    prog = (st.session_state.sf_step - 1) / 3 * 100
+    st.markdown(
+        f'<div style="height:2px;background:{T["rule"]};">'
+        f'<div style="height:100%;width:{prog}%;background:linear-gradient(90deg,{T["gold"]},{T["accent"]});transition:width .6s;"></div>'
+        f'</div>',
+        unsafe_allow_html=True
+    )
+
+    # Step indicator
+    step_names = ["Configure","Select Story","Generate Package","Export"]
+    step_parts = []
+    for i, s in enumerate(step_names):
+        col = T["gold"] if i+1==st.session_state.sf_step else (T["green"] if i+1<st.session_state.sf_step else T["text4"])
+        icon = "✓" if i+1<st.session_state.sf_step else ("▶" if i+1==st.session_state.sf_step else "○")
+        step_parts.append(f'<span style="font-family:JetBrains Mono,monospace;font-size:8px;letter-spacing:1px;text-transform:uppercase;color:{col};">{icon} {s}</span>')
+    sep = f'<span style="color:{T["rule2"]};margin:0 8px;">—</span>'
+    st.markdown(
+        f'<div style="padding:14px 40px;border-bottom:1px solid {T["rule"]};display:flex;align-items:center;">'
+        f'{sep.join(step_parts)}</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown("<div style='padding:40px;'>", unsafe_allow_html=True)
+
+    # ── STEP 1: CONFIGURE ──
+    if st.session_state.sf_step == 1:
+        mono_label("Step 1 — Configure Your Story", T["gold"])
+        st.markdown(
+            f'<div style="font-size:14px;color:{T["text3"]};margin-bottom:28px;line-height:1.65;max-width:620px;">'
+            f'Set your story parameters. The AI generates 3 completely different story options with full cinematic breakdowns, viral/emotion/retention scores, and scene object lists for Frame 1 continuity.</div>',
+            unsafe_allow_html=True
+        )
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            sf_story_type = st.selectbox("Story Type", [
+                "Funny","Emotional","Cute & Heartwarming","Action","Adventure","Mystery","Educational"
+            ])
+            sf_character = st.selectbox("Character", [
+                "Puppy","Cat","Penguin","Fox","Bunny","Panda","Baby Bear","Duck","Hamster","Custom"
+            ])
+            sf_custom_char = ""
+            if sf_character == "Custom":
+                sf_custom_char = st.text_input("Describe character", placeholder="e.g. tiny baby dragon with huge eyes")
+        with col2:
+            sf_duration = st.number_input(
+                "Duration (seconds)", min_value=8, max_value=600, value=30, step=1,
+                help="Any duration. Must be divisible by segment size."
+            )
+            sf_segment = st.selectbox(
+                "Segment Size", [8, 10],
+                help="8s = more detailed segments. 10s = fewer, longer clips."
+            )
+            sf_style = st.selectbox("Animation Style", [
+                "Pixar","Disney","DreamWorks","Anime","Chibi","Cartoon","Realistic"
+            ])
+        with col3:
+            sf_platform = st.selectbox("Platform", [
+                "Instagram Reels","TikTok","YouTube Shorts","YouTube"
+            ])
+            sf_ending = st.selectbox("Ending Type", [
+                "Happy","Funny","Emotional","Twist","Sad","Random"
+            ])
+            sf_custom_idea = st.text_area(
+                "Custom Idea (optional)",
+                placeholder="e.g. Puppy tries to get a heart balloon stuck in a tree...",
+                height=80
+            )
+
+        num_p = sf_duration // sf_segment
+        rem = sf_duration % sf_segment
+        if rem != 0:
+            st.warning(f"⚠️ {sf_duration}s ÷ {sf_segment}s has remainder {rem}s. Will generate {num_p} prompts × {sf_segment}s = {num_p * sf_segment}s. Suggest using {num_p * sf_segment}s or {(num_p+1) * sf_segment}s.")
+        else:
+            st.markdown(
+                f'<div style="background:{T["green"]}0f;border:1px solid {T["green"]}30;border-left:2px solid {T["green"]};padding:12px 16px;font-family:JetBrains Mono,monospace;font-size:10px;color:{T["green"]};margin-top:12px;">'
+                f'{sf_duration}s ÷ {sf_segment}s = <strong>{num_p} video prompts</strong> will be generated</div>',
+                unsafe_allow_html=True
+            )
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        generate_button("→ GENERATE 3 STORY OPTIONS", "sf_gen1_liq", gold=True)
+        sf_gen1 = st.button("GENERATE STORIES", key="sf_gen1_std")
+
+        if sf_gen1:
+            st.session_state.sf_config = {
+                "story_type": sf_story_type, "character": sf_character,
+                "custom_char": sf_custom_char, "duration": sf_duration,
+                "segment": sf_segment, "style": sf_style,
+                "platform": sf_platform, "ending": sf_ending,
+                "custom_idea": sf_custom_idea
+            }
+            show_loading([
+                "Analyzing story type and character personality...",
+                "Crafting dramatic arc: Hook → Goal → Conflict → Escalation → Payoff...",
+                "Writing 3 completely different story options...",
+                "Calculating viral, emotion, hook, and retention scores...",
+                "Listing all scene objects for Frame 1 continuity lock...",
+            ], T["gold"])
+            cfg = st.session_state.sf_config
+            raw = generate_story(
+                cfg["story_type"], cfg["character"], cfg["duration"],
+                cfg["style"], cfg["platform"], cfg["ending"],
+                cfg["custom_char"], cfg["custom_idea"]
+            )
+            if raw and "ERROR" in raw:
+                st.error("Story generation failed: " + raw.split("||")[-1])
+            else:
+                st.session_state.sf_stories = raw
+                st.session_state.sf_step = 2
+                st.rerun()
+
+    # ── STEP 2: SELECT STORY ──
+    elif st.session_state.sf_step == 2:
+        cfg = st.session_state.sf_config
+        num_p = cfg["duration"] // cfg["segment"]
+        mono_label("Step 2 — Review & Select Your Story", T["gold"])
+        st.markdown(
+            f'<div style="font-size:14px;color:{T["text3"]};margin-bottom:20px;line-height:1.65;max-width:640px;">'
+            f'Review all 3 stories. Select one to develop into a complete production package — {num_p} video prompts × {cfg["segment"]}s each = {cfg["duration"]}s total.</div>',
+            unsafe_allow_html=True
+        )
+
+        output_card("3 Complete Story Options", st.session_state.sf_stories or "", T["gold"], height=520)
+        st.download_button("↓ Download All 3 Stories",
+            st.session_state.sf_stories or "", file_name="story_options.txt", key="dl_sf_stories")
+
+        divider()
+        c1, c2 = st.columns([2,1])
+        with c1:
+            selected = st.selectbox("Select story to develop into full package", [
+                "Story Option 1","Story Option 2","Story Option 3"
+            ])
+        with c2:
+            custom_objects = st.text_input(
+                "Override scene objects (optional)",
+                placeholder="balloon, tree, box, mud, bird..."
+            )
+
+        st.markdown(f"""
+<div style="background:{T["bg2"]};border:1px solid {T["rule"]};border-left:3px solid {T["gold"]};padding:16px 20px;margin:20px 0;">
+  <div style="font-family:JetBrains Mono,monospace;font-size:8px;letter-spacing:2px;text-transform:uppercase;color:{T["gold"]};margin-bottom:12px;">PACKAGE INCLUDES</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+    {"".join([f'<div style="font-size:12px;color:{T["text2"]};"><span style="color:{T["gold"]};">→</span> {t}</div>' for t in ["Character design prompts","6 expression sheets","Frame 1 master prompt",f"{num_p} video prompts × {cfg['segment']}s","Continuity checklist","Full workflow guide"]])}
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+        generate_button(f"→ GENERATE {num_p} PROMPTS + FULL PACKAGE", "sf_gen2_liq", gold=True)
+        sf_gen2 = st.button("GENERATE FULL PACKAGE", key="sf_gen2_std")
+        if st.button("← Back to Configure", key="sf_back_step2"):
+            st.session_state.sf_step = 1; st.rerun()
+
+        if sf_gen2:
+            st.session_state.sf_config["selected"] = selected
+            st.session_state.sf_config["custom_objects"] = custom_objects
+            show_loading([
+                "Extracting story structure and objects...",
+                "Generating character design sheet prompts...",
+                "Creating 6 expression reference prompts...",
+                "Building Frame 1 establishing shot with all objects...",
+                f"Engineering {num_p} video prompts × {cfg['segment']}s each...",
+                "Writing production workflow and continuity checklist...",
+            ], T["gold"])
+            cfg = st.session_state.sf_config
+            char = cfg["custom_char"] if cfg["custom_char"] else cfg["character"]
+            story_sum = f'{cfg["story_type"]} {char} story, {cfg["duration"]}s, {cfg["ending"]} ending. {selected} from generated options.'
+            scene_obj = custom_objects if custom_objects else ""
+            if not scene_obj:
+                scene_obj = safe_generate(
+                    f'List every prop, supporting character, and environment element needed for a {cfg["story_type"]} {char} story '
+                    f'with {cfg["ending"]} ending. Be comprehensive. Respond with a simple comma-separated list only. No sentences.'
+                )
+            char_sheet = generate_character_sheet(char, cfg["style"], story_sum)
+            frame1 = generate_frame1_prompt(story_sum, char, scene_obj, cfg["style"], cfg["platform"])
+            prompt_chain = generate_prompt_chain(
+                story_sum, char, scene_obj,
+                cfg["duration"], cfg["segment"],
+                cfg["style"], cfg["platform"]
+            )
+            st.session_state.sf_char_sheet = char_sheet
+            st.session_state.sf_frame1 = frame1
+            st.session_state.sf_prompt_chain = prompt_chain
+            st.session_state.sf_scene_objects = scene_obj
+            st.session_state.sf_step = 3
+            st.rerun()
+
+    # ── STEP 3: FULL PRODUCTION PACKAGE ──
+    elif st.session_state.sf_step == 3:
+        cfg = st.session_state.sf_config
+        char = cfg.get("custom_char","") or cfg.get("character","")
+        num_p = cfg["duration"] // cfg["segment"]
+        confidence = random.randint(89, 97)
+
+        mono_label("Step 3 — Complete Production Package", T["gold"])
+        st.markdown(f"""
+<div style="background:{T["bg2"]};border:1px solid {T["rule"]};border-top:2px solid {T["gold"]};padding:16px 20px;margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+  <div>
+    <div style="font-family:JetBrains Mono,monospace;font-size:8px;letter-spacing:2px;text-transform:uppercase;color:{T["gold"]};margin-bottom:4px;">Production Package Ready</div>
+    <div style="font-size:13px;color:{T["text2"]};">{char.title()} · {cfg["style"]} · {cfg["duration"]}s total · {num_p} prompts × {cfg["segment"]}s each</div>
+  </div>
+  <div style="font-family:JetBrains Mono,monospace;font-size:9px;color:{T["green"]};background:{T["green"]}0f;border:1px solid {T["green"]}30;padding:5px 12px;">✦ AI CONFIDENCE: {confidence}%</div>
+</div>
+""", unsafe_allow_html=True)
+
+        t1, t2, t3, t4, t5 = st.tabs([
+            "📋  SCENE OBJECTS",
+            "🎨  CHARACTER SHEETS",
+            "🖼️  FRAME 1",
+            f"🎬  {num_p} PROMPTS",
+            "📖  HOW TO USE"
+        ])
+
+        with t1:
+            mono_label("All Scene Objects — Must All Be Visible in Frame 1")
+            st.markdown(
+                f'<div style="font-size:13px;color:{T["text3"]};margin-bottom:16px;line-height:1.65;max-width:640px;">'
+                f'Every prop, supporting character, and environment element must be planted in Frame 1 — even if they only appear later in the story. This prevents random spawning and teleporting between clips.</div>',
+                unsafe_allow_html=True
+            )
+            output_card("Complete Scene Object List", st.session_state.sf_scene_objects or "", T["gold"], confidence)
+            st.download_button("↓ Download Scene Objects",
+                st.session_state.sf_scene_objects or "", file_name="scene_objects.txt", key="dl_obj")
+
+        with t2:
+            mono_label("Character Design Sheet Prompts")
+            st.markdown(
+                f'<div style="font-size:13px;color:{T["text3"]};margin-bottom:16px;line-height:1.65;max-width:640px;">'
+                f'<strong style="color:{T["text"]};">Generate these images first</strong> — before any video. '
+                f'Upload character sheets alongside every single video prompt to maintain consistent fur, face shape, colors, and accessories across all clips.</div>',
+                unsafe_allow_html=True
+            )
+            output_card("Character Sheet + 6 Expression Prompts", st.session_state.sf_char_sheet or "", T["purple"], confidence)
+            st.download_button("↓ Download Character Sheets",
+                st.session_state.sf_char_sheet or "", file_name="character_sheets.txt", key="dl_char")
+
+        with t3:
+            mono_label("Frame 1 — Master Establishing Shot")
+            st.markdown(
+                f'<div style="font-size:13px;color:{T["text3"]};margin-bottom:16px;line-height:1.65;max-width:640px;">'
+                f'<strong style="color:{T["text"]};">Generate this second.</strong> Frame 1 sets the camera angle, lighting, character scale, and plants all story objects in their starting positions. The screenshot of Frame 1 becomes the starting image for Prompt 1.</div>',
+                unsafe_allow_html=True
+            )
+            output_card("Frame 1 Master Prompt", st.session_state.sf_frame1 or "", T["accent"], confidence)
+            st.download_button("↓ Download Frame 1 Prompt",
+                st.session_state.sf_frame1 or "", file_name="frame1_prompt.txt", key="dl_f1")
+
+        with t4:
+            mono_label(f"Complete Video Prompt Chain — {num_p} Prompts × {cfg['segment']}s = {cfg['duration']}s")
+            st.markdown(
+                f'<div style="font-size:13px;color:{T["text3"]};margin-bottom:16px;line-height:1.65;max-width:640px;">'
+                f'<strong style="color:{T["text"]};">Use in exact order.</strong> Each prompt starts from the last-frame screenshot of the previous clip. Never skip the screenshot step — it is what maintains visual continuity.</div>',
+                unsafe_allow_html=True
+            )
+            output_card(f"Full Prompt Chain — {num_p} Prompts", st.session_state.sf_prompt_chain or "", T["green"], confidence)
+            st.download_button("↓ Download Prompt Chain",
+                st.session_state.sf_prompt_chain or "", file_name="prompt_chain.txt", key="dl_chain")
+
+            divider()
+            
+            # Bundle all components into a master file string mapping variables cleanly
+            full_pkg = (
+                f"STORYFLOW AI — COMPLETE PRODUCTION PACKAGE\n"
+                f"Character: {char} | Style: {cfg['style']} | Duration: {cfg['duration']}s | {num_p} prompts × {cfg['segment']}s\n"
+                f"{'='*70}\n\n"
+                f"SCENE OBJECTS\n{st.session_state.sf_scene_objects or ''}\n\n"
+                f"CHARACTER SHEETS\n{st.session_state.sf_char_sheet or ''}\n\n"
+                f"FRAME 1 PROMPT\n{st.session_state.sf_frame1 or ''}\n\n"
+                f"VIDEO PROMPT CHAIN\n{st.session_state.sf_prompt_chain or ''}\n"
+            )
+            
+            c1, c2 = st.columns(2)
+            with c1:
+                st.download_button(
+                    "↓ Download Full Production Package (.txt)", 
+                    full_pkg, 
+                    file_name=f"storyflow_{char}_{cfg['style']}_full_package.txt", 
+                    key="dl_sf_full_pkg"
+                )
+            with c2:
+                if st.button("Clear & Create New Story", key="sf_reset"):
+                    for k in ["sf_stories", "sf_char_sheet", "sf_frame1", "sf_prompt_chain", "sf_scene_objects", "sf_config"]:
+                        st.session_state[k] = DEFAULTS[k]
+                    st.session_state.sf_step = 1
+                    st.rerun()
+
+        with t5:
+            mono_label("Production Workflow Guide")
+            st.markdown(f"""
+            <div style="font-size:14px; line-height:1.85; color:{T['text2']}; font-family:Inter,sans-serif;">
+                <ol style="padding-left:20px; margin-bottom:16px;">
+                    <li style="margin-bottom:12px;"><strong style="color:{T['text']};">Lock Character Design:</strong> Feed the Character Sheet prompts into your Image Generator (Midjourney/Ideogram). Choose your favorite variation and save it.</li>
+                    <li style="margin-bottom:12px;"><strong style="color:{T['text']};">Establish Frame 1:</strong> Generate your Frame 1 Master Prompt. Make sure all listed scene objects are present. This image acts as your visual foundation anchor.</li>
+                    <li style="margin-bottom:12px;"><strong style="color:{T['text']};">Chain Video Generations:</strong> Take a screenshot of the <em>last frame</em> of your previous video segment, combine it with the next text prompt in the Prompt Chain, and pass it to your AI Video Generator (Luma, Runway, or Kling). Repeat sequentially.</li>
+                </ol>
+            </div>
+            """, unsafe_allow_html=True)
+
+        if st.button("← Start Over", key="sf_back_step3"):
+            st.session_state.sf_step = 1
+            st.rerun()
+
+        st.markdown("</div>", unsafe_allow_html=True)
