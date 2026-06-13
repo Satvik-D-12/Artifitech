@@ -1,18 +1,22 @@
 from google import genai
 from dotenv import load_dotenv
-import os, time
+import os
+import time
 
 load_dotenv()
+
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 # ══════════════════════════════════════════
 # SAFE GENERATE
 # ══════════════════════════════════════════
+
 def safe_generate(prompt: str) -> str:
     for attempt in range(3):
         try:
             response = client.models.generate_content(
-                model="gemini-2.5-flash", contents=prompt
+                model="gemini-2.5-flash",
+                contents=prompt
             )
             return response.text
         except Exception as e:
@@ -27,9 +31,11 @@ def safe_generate(prompt: str) -> str:
             else:
                 return f"GENERATION_ERROR||{error}"
 
+
 # ══════════════════════════════════════════
 # PARSE SECTIONS
 # ══════════════════════════════════════════
+
 def parse_sections(raw: str) -> dict:
     sections = {"captions": "", "hashtags": "", "script": "", "thumbnail": "", "raw": raw}
     markers = {
@@ -50,11 +56,13 @@ def parse_sections(raw: str) -> dict:
             sections[key] = raw[start_idx:].strip()
     return sections
 
+
 # ══════════════════════════════════════════
 # FULL CONTENT PACK
 # ══════════════════════════════════════════
+
 def generate_full_content(topic: str, niche: str, platform: str, tone: str) -> dict:
-    prompt = f"""You are a world-class viral content strategist.
+    prompt = f"""You are a world-class viral content strategist and professional scriptwriter.
 
 Generate complete social media content for:
 TOPIC: {topic}
@@ -67,340 +75,438 @@ Return EXACTLY in this format:
 ==CAPTIONS==
 
 SHORT (under 50 words):
-[Write a complete punchy caption under 50 words. Use emojis naturally. End with a question or CTA.]
+[Write a complete, punchy caption under 50 words. Must end with a hook question or CTA.]
 
 MEDIUM (50-100 words):
-[Write a complete 50-100 word caption. Tell a mini story or share insight. Use emojis. Strong CTA at the end.]
+[Write a full, engaging caption between 50-100 words. Include a story element, value proposition, and end with a CTA.]
 
 LONG (100-150 words):
-[Write a complete 100-150 word caption. Full narrative arc with hook, value delivery, and strong CTA. Use emojis strategically.]
+[Write a rich, detailed caption between 100-150 words. Include context, emotional connection, value, and a strong CTA.]
 
 ==HASHTAGS==
 
 HIGH VOLUME (1M+ posts):
-[10 hashtags on one line separated by spaces]
+[10 hashtags on one line, space-separated]
 
 MEDIUM VOLUME (100K-1M posts):
-[10 hashtags on one line separated by spaces]
+[10 hashtags on one line, space-separated]
 
 NICHE COMMUNITY (under 100K posts):
-[10 hashtags on one line separated by spaces]
+[10 hashtags on one line, space-separated]
 
 ==SCRIPT==
 
+This script will be read by a human creator who needs to know EXACTLY what to say and do.
+Every section below must be written in plain, complete, natural English sentences —
+NEVER write keywords, fragments, labels-only, or bullet-point notes.
+Imagine you are handing this to someone who will read it out loud word-for-word on camera.
+
 HOOK (0-3 seconds):
-[Write one complete, powerful sentence that will stop someone mid-scroll. It must create immediate curiosity, shock, or emotional pull. This is spoken or shown on screen as the very first thing viewers see. Make it impossible to ignore.]
+Write the exact sentence the creator should say out loud in the first 3 seconds.
+It must be ONE complete, natural spoken sentence that creates curiosity, shock, or a pattern interruption.
+Do not write a topic or keyword — write the literal words to speak.
+
+VISUAL DIRECTION FOR HOOK:
+In one full sentence, describe what should be shown on screen during the hook (camera angle, action, text overlay).
 
 BODY (3-25 seconds):
-[Write 6-8 complete on-screen text lines. Each line should be a complete thought under 8 words. Write them as a flowing narrative — each line builds on the previous one. Together they should deliver real value, tell a story, or build tension. Format each line on its own line with a dash: - line one here]
+Write 6 to 8 numbered lines. Each line must be a COMPLETE spoken sentence the creator says out loud,
+written in plain conversational English — not a keyword, not a topic, not a fragment.
+Each sentence should be short (under 12 words) but fully formed, and should build the story, deliver value,
+or escalate tension. Format like:
+1. [complete natural sentence the creator says]
+2. [complete natural sentence the creator says]
+...continue to 6-8 lines.
 
 CTA (25-30 seconds):
-[Write one specific, compelling call to action. Tell viewers exactly what to do and why — follow, save, comment, share. Make it feel urgent and personal, not generic.]
+Write ONE complete spoken sentence telling the viewer exactly what to do right now and why
+(e.g. follow, comment, save, share) — written as natural dialogue, not an instruction label.
 
 SUGGESTED AUDIO:
-[Describe the perfect music in detail — genre, tempo (BPM range), mood, energy level, and why it matches this content. Example: "Lo-fi hip hop, 75-85 BPM, melancholic but hopeful, minimal beats with subtle piano — matches the reflective tone of the content and keeps viewers watching without distraction."]
+Describe in one or two full sentences the music vibe, tempo (BPM), and mood for the background track.
+
+PRODUCTION NOTES:
+In 2-3 full sentences, give the creator practical filming tips for this specific script
+(pacing, energy, where to pause, what to emphasize).
 
 ==THUMBNAIL==
 
 IMAGE PROMPT:
-[Write a 60-80 word hyper-specific image generation prompt. Include: exact subject description, lighting style, color palette, mood, composition, camera angle, background detail, and rendering style. Be cinematic and specific.]
+[Write a 60-90 word hyper-specific, cinematic image generation prompt. Include subject, action, lighting, camera angle, background, mood, and visual style.]
 
 STYLE KEYWORDS:
-[8 specific visual style descriptors separated by commas]
+[6-8 specific visual style descriptors separated by commas]
 
 COLOR PALETTE:
-[4 hex color codes with descriptive names, e.g. #ff4b2b Volcanic Red, #1a1a2e Midnight Navy]"""
+[3-4 specific hex codes with color names, e.g. #FF4B2B Deep Crimson, #1A1A2E Midnight Navy]
+
+Rules:
+- Match {tone} tone throughout every section
+- Optimize specifically for {platform} algorithm and audience behavior
+- Every caption must feel natural and human — not AI-generated
+- The SCRIPT section especially must read like real spoken sentences a person can perform immediately —
+  absolutely no keyword lists, no single-word lines, no notes-style fragments
+- Hashtag mix must be strategic: not all mega-popular, spread the range
+- Thumbnail prompt must be hyper-specific enough to paste directly into Midjourney or Ideogram"""
 
     raw = safe_generate(prompt)
     return parse_sections(raw)
 
+
 # ══════════════════════════════════════════
 # HOOK IDEAS
 # ══════════════════════════════════════════
+
 def generate_hooks(topic: str, niche: str, count: int = 5) -> str:
-    prompt = f"""You are a viral content hook specialist.
+    prompt = f"""You are a viral content hook specialist with deep expertise in psychology-driven content.
 
-Generate {count} different powerful hooks for a {niche} reel about: {topic}
+Generate {count} different powerful opening hooks for a {niche} reel about: {topic}
 
-Each hook must be under 10 words and use a different psychological trigger.
+Each hook must be under 12 words, immediately compelling, and a distinctly different style.
+Write each hook as a complete sentence of spoken dialogue — not a keyword or fragment.
 
 Format exactly:
-HOOK 1 (Question): [hook]
-WHY IT WORKS: [one sentence psychological explanation]
-BEST PLATFORM: [where this hook style dominates]
+HOOK 1 (Question): [full hook sentence]
+HOOK 2 (Shock): [full hook sentence]
+HOOK 3 (Controversy): [full hook sentence]
+HOOK 4 (Story): [full hook sentence]
+HOOK 5 (Number): [full hook sentence]
 
-HOOK 2 (Shock): [hook]
-WHY IT WORKS: [explanation]
-BEST PLATFORM: [platform]
-
-HOOK 3 (Controversy): [hook]
-WHY IT WORKS: [explanation]
-BEST PLATFORM: [platform]
-
-HOOK 4 (Story): [hook]
-WHY IT WORKS: [explanation]
-BEST PLATFORM: [platform]
-
-HOOK 5 (Number): [hook]
-WHY IT WORKS: [explanation]
-BEST PLATFORM: [platform]"""
+After each hook, add one line explaining WHY it works psychologically.
+WHY: [one sentence explanation]"""
     return safe_generate(prompt)
+
 
 # ══════════════════════════════════════════
 # CONTENT SERIES
 # ══════════════════════════════════════════
+
 def generate_series(topic: str, niche: str, platform: str, num_posts: int = 5) -> str:
-    prompt = f"""You are a viral content strategist.
+    prompt = f"""You are a viral content strategist planning a high-retention series.
 
-Create a {num_posts}-post content series for {niche} on {platform} about: {topic}
+Create a {num_posts}-post content series for a {niche} account on {platform} about: {topic}
 
-Each post builds on the previous — create a journey viewers NEED to follow.
+Each post must build curiosity for the next one — like a Netflix series.
 
-For each post:
-
+For each post provide:
 POST [N]:
-ANGLE: [unique angle not covered in previous posts]
-HOOK: [opening hook under 10 words]
-CAPTION PREVIEW: [first 2 complete sentences that pull viewers in]
-KEY VALUE: [what viewers learn or feel]
-HASHTAG THEME: [4 core hashtags]
-BEST DAY TO POST: [day]
-CLIFFHANGER: [how this post makes viewers need the next one]"""
+ANGLE: [unique angle or sub-topic]
+HOOK: [full opening line spoken to viewer — not a keyword]
+CAPTION PREVIEW: [first 2-3 full sentences of the caption]
+HASHTAG THEME: [4 core hashtags most relevant to this specific post]
+BEST DAY: [day of week and why]
+CLIFFHANGER: [one sentence that makes viewers want to see the next post]"""
     return safe_generate(prompt)
+
 
 # ══════════════════════════════════════════
 # CAROUSEL
 # ══════════════════════════════════════════
+
 def generate_carousel(topic: str, niche: str, platform: str) -> str:
-    prompt = f"""Create a 7-slide carousel for {platform} about: {topic} in the {niche} niche.
+    prompt = f"""You are a carousel content specialist who creates high-save, high-share posts.
 
+Create a 7-slide carousel post for {platform} about: {topic}
+Niche: {niche}
+
+For each slide:
 SLIDE [N]:
-HEADLINE: [bold headline under 6 words]
-BODY TEXT: [2-3 complete sentences of value]
-VISUAL DIRECTION: [specific design instruction]
-EMOTION: [what this slide should make the viewer feel]
+HEADLINE: [bold headline under 6 words — punchy and direct]
+BODY: [2-3 complete, value-packed sentences. No bullet fragments. Real sentences.]
+VISUAL: [specific visual design suggestion with colors and layout]
+MICRO-CTA: [one-line action or thought prompt for this slide]
 
-Slide 1 = pattern interrupt hook. Slide 7 = strong save/share CTA."""
+Slide 1 must stop the scroll. Slide 7 must convert viewers to followers or saves.
+After all slides, add:
+COVER DESIGN: [detailed visual description of the cover slide]
+CAPTION: [full 3-sentence caption for the carousel post]"""
     return safe_generate(prompt)
 
+
 # ══════════════════════════════════════════
-# THREAD
+# TWITTER/X THREAD
 # ══════════════════════════════════════════
+
 def generate_thread(topic: str, niche: str) -> str:
-    prompt = f"""Write a viral 8-tweet X/Twitter thread about: {topic} in the {niche} niche.
+    prompt = f"""You are a viral X/Twitter thread writer who consistently hits 1M+ impressions.
 
-TWEET 1 (Hook): [complete tweet under 280 chars — bold claim or pattern interrupt]
-TWEET 2: [complete tweet]
-TWEET 3: [complete tweet]
-TWEET 4: [complete tweet]
-TWEET 5: [complete tweet]
-TWEET 6: [complete tweet]
-TWEET 7: [complete tweet]
-TWEET 8 (CTA): [engagement CTA tweet]"""
+Write a viral 8-tweet thread about: {topic}
+Niche: {niche}
+
+Rules:
+- Every tweet must be a complete, engaging thought under 280 characters
+- Tweet 1 must make someone stop scrolling instantly
+- Each tweet must naturally lead to the next
+- Tweets 2-7 must deliver real, specific value
+- Tweet 8 must drive follows, bookmarks, or replies
+
+Format:
+TWEET 1 (Hook): [tweet — under 280 chars]
+TWEET 2: [tweet]
+TWEET 3: [tweet]
+TWEET 4: [tweet]
+TWEET 5: [tweet]
+TWEET 6: [tweet]
+TWEET 7: [tweet]
+TWEET 8 (CTA): [engagement CTA tweet]
+
+After the thread, add:
+THREAD TITLE: [what to call this thread for saving]
+BEST TIME TO POST: [day and time with reason]"""
     return safe_generate(prompt)
 
-# ══════════════════════════════════════════
-# REPURPOSE
-# ══════════════════════════════════════════
-def repurpose_content(original: str, target_platform: str) -> str:
-    prompt = f"""Repurpose this content for {target_platform}:
 
-ORIGINAL:
+# ══════════════════════════════════════════
+# CONTENT REPURPOSER
+# ══════════════════════════════════════════
+
+def repurpose_content(original: str, target_platform: str) -> str:
+    prompt = f"""You are a content repurposing expert who understands each platform's unique algorithm and culture.
+
+Repurpose this content for {target_platform}:
+
+ORIGINAL CONTENT:
 {original}
 
+Analyze the core message and value, then rewrite it natively for {target_platform}.
+
+Output:
 REPURPOSED CAPTION:
-[fully adapted caption native to {target_platform}]
+[Full caption rewritten specifically for {target_platform}'s culture, tone, and character limits. Not a simple edit — a complete native rewrite.]
 
 REPURPOSED HASHTAGS:
-[platform-specific hashtags]
+[10 hashtags optimized specifically for {target_platform}'s tagging culture]
 
 REPURPOSED HOOK:
-[platform-optimized opening]
+[Opening line rewritten for {target_platform}'s specific viewer behavior and scroll patterns]
 
 REPURPOSED CTA:
-[platform-appropriate call to action]
+[Platform-appropriate call to action that fits {target_platform}'s engagement mechanics]
 
-ADAPTATION NOTES:
-[2-3 sentences on what changed and why]"""
+PLATFORM NOTES:
+[3 specific observations about how this content was adapted and why those changes help performance on {target_platform}]"""
     return safe_generate(prompt)
 
-# ══════════════════════════════════════════
-# STORYFLOW — STORY GENERATION
-# ══════════════════════════════════════════
-def generate_story(story_type, character, duration, style, platform, ending_type,
-                   custom_character="", custom_story_idea="") -> str:
-    char = custom_character if custom_character else character
-    idea_ctx = f"\nCustom idea: {custom_story_idea}" if custom_story_idea else ""
-
-    prompt = f"""You are a master viral AI animal story writer for {style}-style animated {platform} videos.
-
-Create 3 complete story options for a {duration}-second {story_type} animated video featuring: {char}
-Ending: {ending_type}{idea_ctx}
-
-For EACH story follow this EXACT structure:
-
-═══════════════════════════════════
-STORY OPTION [N]
-═══════════════════════════════════
-
-TITLE: [Catchy viral title]
-
-VIRALITY SCORE: [X/100]
-EMOTION SCORE: [X/100]
-RETENTION SCORE: [X/100]
-HOOK STRENGTH: [X/100]
-ESTIMATED WATCH %: [X%]
-AI CONFIDENCE: [X%]
-
-LOGLINE: [One sentence that makes someone need to watch this immediately]
-
-FULL STORY BREAKDOWN:
-
-HOOK (0-3 seconds):
-[Describe exactly what happens — camera angle, character action, expression, environment. What makes someone stop scrolling instantly?]
-
-GOAL/CURIOSITY (3-8 seconds):
-[What does the character want? Why do viewers immediately root for them? Describe the visual that creates investment.]
-
-FIRST CONFLICT (8-{duration//3} seconds):
-[What goes wrong? Describe the problem in cinematic detail — character reaction, facial expression, body language, environment interaction.]
-
-ESCALATION ({duration//3}-{2*duration//3} seconds):
-[How does it get worse? Describe the cause-and-effect chain. Each failure leads naturally to the next. Include the funny or emotional peak moment.]
-
-TWIST/HELP ({2*duration//3}-{duration-5} seconds):
-[The unexpected turn. Who helps? What clever solution appears? What surprises the viewer?]
-
-PAYOFF ({duration-5}-{duration} seconds):
-[The {ending_type} ending in full detail. Exact visuals, character expressions, the emotional peak. What makes viewers say "aww" or laugh out loud?]
-
-ALL SCENE OBJECTS (must all appear in Frame 1):
-[Comma-separated list of every prop, character, and environment element]
-
-VIRALITY HOOK:
-[Why will people share this? What specific emotion does it trigger?]
-
-═══════════════════════════════════
-
-Generate all 3 stories. Make each completely different in approach."""
-    return safe_generate(prompt)
 
 # ══════════════════════════════════════════
-# STORYFLOW — CHARACTER SHEET
+# VIDEO STORY GENERATOR
 # ══════════════════════════════════════════
-def generate_character_sheet(character: str, style: str, story_context: str = "") -> str:
-    prompt = f"""You are a professional character designer for {style} 3D animation.
 
-Generate a complete character design package for: {character}
-Style: {style}
-Context: {story_context if story_context else "Animated short film"}
+def generate_video_story(animal: str, story_type: str, duration: int, style: str,
+                          platform: str, ending_type: str) -> dict:
+    """Generate 3 viral story options for the requested duration."""
 
-1. MASTER CHARACTER SHEET PROMPT:
-[150-200 word image generation prompt for a professional character turnaround sheet.
-Include: specific physical features, fur/skin texture, eye details, colors, accessories, personality in design.
-Format: "[Character] character model sheet, animation turnaround, multiple angles.
-Top Row: Front, left side, back, right side, 3/4 view — all neutral standing pose.
-Bottom Row: Close-up details grid, color palette with hex codes, expressions grid (Happy, Excited, Sad, Curious, Determined, Surprised).
-{style} 3D animation, clean white background, warm studio lighting, 4K quality."]
+    story_prompt = f"""You are a world-class viral AI animal video story creator specializing in {style}-style animated short films.
 
-2. INDIVIDUAL EXPRESSION PROMPTS:
-HAPPY: [specific expression prompt]
-EXCITED: [specific expression prompt]
-SAD: [specific expression prompt]
-CURIOUS: [specific expression prompt]
-DETERMINED: [specific expression prompt]
-SURPRISED: [specific expression prompt]
+Generate 3 different viral story options for:
+- Character: {animal}
+- Story Type: {story_type}
+- Duration: {duration} seconds
+- Style: {style}
+- Platform: {platform}
+- Ending: {ending_type}
 
-3. CHARACTER BIBLE:
-[150-word description of personality, movement style, quirks, and what makes them visually memorable]"""
-    return safe_generate(prompt)
+For EACH story option, provide:
 
-# ══════════════════════════════════════════
-# STORYFLOW — FRAME 1
-# ══════════════════════════════════════════
-def generate_frame1_prompt(story_summary, character, scene_objects, style, platform) -> str:
-    aspect = "vertical 9:16" if platform in ["Instagram Reels","TikTok","YouTube Shorts"] else "horizontal 16:9"
-    prompt = f"""You are a master cinematographer for {style} animated films.
+STORY [N]:
+TITLE: [catchy title]
+LOGLINE: [one sentence summary]
+HOOK (0-3 sec): [exactly what happens in first 3 seconds to stop scrolling]
+GOAL: [what does the character want?]
+CONFLICT: [what obstacle stands in the way?]
+ESCALATION: [how does it get worse or more tense?]
+PAYOFF: [the emotional or funny resolution]
+ENDING: [the final {ending_type} moment — be specific]
+VIRALITY SCORE: [1-100]
+EMOTION SCORE: [1-100]
+RETENTION SCORE: [1-100]
+ESTIMATED WATCH %: [percentage]
+WHY IT WORKS: [2 sentences on the psychological hooks that make this viral]
 
-Create the perfect Frame 1 establishing shot for:
-STORY: {story_summary}
-CHARACTER: {character}
-ALL OBJECTS: {scene_objects}
+The story must have enough plot material to sustain a {duration}-second video
+broken into multiple sequential clips — make sure GOAL, CONFLICT, ESCALATION, and PAYOFF
+each have enough distinct beats to fill that runtime without feeling repetitive.
+
+Make each story distinctly different in structure and emotional arc."""
+
+    stories_raw = safe_generate(story_prompt)
+
+    return {"stories": stories_raw, "raw": stories_raw}
+
+
+def generate_video_full_package(animal: str, story_title: str, story_logline: str,
+                                  story_details: str, style: str, duration: int,
+                                  platform: str, clip_length: int = 8) -> dict:
+    """Given a selected story, generate the complete production package.
+
+    duration: total video length in seconds. Any positive integer.
+    clip_length: length of each individual clip — 8 or 10 seconds.
+    num_prompts = duration / clip_length, rounded to nearest whole clip
+    (minimum 1). No artificial cap — a 160s video at 8s clips yields 20 prompts,
+    at 10s clips yields 16 prompts.
+    """
+
+    if clip_length not in (8, 10):
+        clip_length = 8
+
+    num_prompts = max(1, round(duration / clip_length))
+
+    # Character analysis
+    char_prompt = f"""You are a {style}-style 3D animation character designer.
+
+For this story:
+TITLE: {story_title}
+STORY: {story_details}
+MAIN CHARACTER: {animal}
+
+Extract ALL characters and objects needed for the complete story.
+
+OUTPUT FORMAT:
+CHARACTERS:
+[list every character that appears, one per line]
+
+STORY OBJECTS (props):
+[list every important prop/object, one per line]
+
+ENVIRONMENT ELEMENTS:
+[list every environment component, one per line]
+
+CHARACTER SHEET PROMPT for {animal}:
+[Write a complete, detailed character design prompt for {animal} in {style} style.
+Include: fur/skin color, eye shape/color, distinguishing features, accessories, personality conveyed through design.
+Format as: "{animal} character model sheet, animation turnaround, multiple angles.
+Top Row (Turnaround Views): Full body, neutral standing pose, repeating from different angles including front view, side view (left), back view, side view (right), and a top-down view.
+Bottom Row (Character Details & Expressions): A Character Details grid showcasing close-up macro shots of specific features. A Color Palette & Texture box with clean color swatches. An Expressions Reference grid showing 6 expressions: Happy, Excited, Sad, Curious, Determined, Surprised.
+Style: Professional 3D animation character sheet, smooth {style}-style 3D render, high detail, 4K quality, warm studio lighting, clean neutral background. [specific character description here]"]"""
+
+    char_raw = safe_generate(char_prompt)
+
+    # First frame
+    frame_prompt = f"""You are a {style}-style cinematic 3D animation director of photography.
+
+Create the MASTER FIRST FRAME prompt for this story:
+TITLE: {story_title}
+CHARACTER: {animal}
+STORY: {story_details}
 STYLE: {style}
-ASPECT: {aspect}
+PLATFORM: {platform} (vertical 9:16)
+TOTAL VIDEO LENGTH: {duration} seconds across {num_prompts} clips of {clip_length} seconds each
 
-FRAME 1 MASTER PROMPT:
-[Write a complete 200-250 word image generation prompt.
-Start with the character in foreground. Plant ALL story objects visibly even if minor.
-Set the camera angle that works for the entire story.
-Establish lighting and mood.
-End with: "{style} 3D animation, 4K cinematic quality, {aspect}, professional studio lighting, high detail"]
+The first frame must:
+1. Establish the entire environment
+2. Show ALL story-important objects visually pre-planted (balloon stuck in tree, box nearby, mud puddle, bird on branch — adapt to this story)
+3. Set the camera angle that will be maintained throughout
+4. Introduce the character with their emotional starting state
+5. Create immediate visual storytelling
 
-OBJECT PLACEMENT GUIDE:
-[Where each object sits and why it makes visual sense]
+Write a complete, detailed image generation prompt (150-200 words) that covers:
+- Character position, expression, and body language
+- Complete environment with ALL future props already visible
+- Lighting and time of day
+- Camera position and angle (this MUST be maintained in all future prompts)
+- Mood and atmosphere
+- Technical specs: {style}-quality 3D animation, 4K, vertical 9:16, cinematic
 
-CAMERA NOTES:
-[Height, angle, focal length, and why this works for the full story]
+FIRST FRAME PROMPT:
+[full detailed prompt here]
 
-CONTINUITY CHECKLIST:
-[Every element that must stay consistent across ALL future prompts]"""
-    return safe_generate(prompt)
+CONTINUITY NOTES:
+[List 5-8 specific visual anchors that MUST remain consistent in every prompt: object positions, camera angle, lighting, etc.]"""
 
-# ══════════════════════════════════════════
-# STORYFLOW — PROMPT CHAIN
-# (Fully flexible: user picks duration + segment size)
-# ══════════════════════════════════════════
-def generate_prompt_chain(story_breakdown, character, scene_objects,
-                           duration: int, segment_size: int, style, platform) -> str:
-    num_prompts = duration // segment_size
-    aspect = "vertical 9:16" if platform in ["Instagram Reels","TikTok","YouTube Shorts"] else "horizontal 16:9"
+    frame_raw = safe_generate(frame_prompt)
 
-    prompt = f"""You are a master AI video prompt engineer for {style} animated story continuity.
+    # Generate prompt chain — story beat plan first so long videos stay coherent
+    beat_prompt = f"""You are a {style}-style 3D animation story editor.
 
-Create a COMPLETE {num_prompts}-prompt video chain.
+STORY TITLE: {story_title}
+CHARACTER: {animal}
+FULL STORY: {story_details}
+TOTAL CLIPS: {num_prompts} (each clip is {clip_length} seconds, total runtime {duration} seconds)
 
-STORY: {story_breakdown}
-CHARACTER: {character}
-ALL SCENE OBJECTS: {scene_objects}
-TOTAL DURATION: {duration} seconds
-SEGMENTS: {num_prompts} prompts × {segment_size} seconds each
+Break this story into exactly {num_prompts} sequential narrative beats — one beat per clip —
+so the full {duration}-second video tells a complete, well-paced story with rising action,
+escalation, and a satisfying ending on the final beat. Avoid repetitive or filler beats.
+
+Format:
+BEAT 1: [one sentence describing what happens in this clip]
+BEAT 2: [one sentence]
+...
+BEAT {num_prompts}: [one sentence]"""
+
+    beats_raw = safe_generate(beat_prompt)
+    # Parse beats into a list (fallback to empty string per beat if parsing fails)
+    beat_lines = []
+    for line in beats_raw.splitlines():
+        line = line.strip()
+        if line.upper().startswith("BEAT"):
+            colon_idx = line.find(":")
+            if colon_idx != -1:
+                beat_lines.append(line[colon_idx+1:].strip())
+    while len(beat_lines) < num_prompts:
+        beat_lines.append("")
+
+    prompts_output = []
+    for i in range(1, num_prompts + 1):
+        is_first = (i == 1)
+        is_last = (i == num_prompts)
+        beat_text = beat_lines[i-1]
+
+        prompt_gen = f"""You are a {style}-style 3D animated video director creating Prompt {i} of {num_prompts} for:
+
+STORY TITLE: {story_title}
+CHARACTER: {animal}
+FULL STORY: {story_details}
 STYLE: {style}
-ASPECT: {aspect}
+PLATFORM: {platform}
+TOTAL PROMPTS: {num_prompts}
+THIS PROMPT: {i} of {num_prompts}
+CLIP DURATION: {clip_length} seconds
+THIS CLIP'S STORY BEAT: {beat_text if beat_text else "Continue the story naturally from the previous clip."}
 
-Generate ALL {num_prompts} prompts in this EXACT format:
+{"This is PROMPT 1 — Start from the First Frame established earlier." if is_first else f"This is PROMPT {i} — MUST start with: 'IMPORTANT: Start from the exact frame shown in the attached image. Match everything exactly: character appearance, position, expression, camera angle, lighting, environment, all object positions. Continue seamlessly. No cuts. No teleporting. No regeneration.'"}
 
-═══════════════════════════════════════════════
-PROMPT [N] — [SCENE NAME] ({segment_size} SECONDS)
-═══════════════════════════════════════════════
+{"This is the FINAL PROMPT — End with the complete emotional payoff and a perfect, stable, shareable final frame." if is_last else ""}
 
-SCENE GOAL: [What story beat does this segment accomplish?]
+Write a complete, detailed video generation prompt for this {clip_length}-second clip that includes:
 
-CONTINUITY LOCK:
-- Character: [exact appearance description]
-- Position: [where in frame]
-- Expression: [emotion at start]
-- Camera: [angle and height]
-- All objects: [list with positions]
-- Lighting: [description]
+1. OPENING: Exact starting state (character position, expression, environment)
+2. TIMELINE BREAKDOWN: Split the {clip_length} seconds into 4 roughly equal segments and describe
+   the specific action with physical details happening in each segment.
+3. MOTION PHYSICS: Describe how movements feel (weight, speed, bounce, reaction)
+4. FACIAL EXPRESSIONS: Specific emotions at each moment
+5. END FRAME REQUIREMENT: Exact final state — stable pose, clear face, ready for next prompt (or final emotional image if last)
+6. TECHNICAL: {style}-quality 3D animation, 4K cinematic, vertical 9:16, one continuous shot, no camera cuts
 
-FULL VIDEO PROMPT:
-[Write 200-250 words. 
-Start PROMPT 1 with: "Ultra-cute {style}-quality 3D animated {character}. 4K cinematic quality. {aspect}. One continuous camera shot. No scene changes. No cuts. No teleporting. Same environment throughout."
-Start PROMPTS 2+ with: "IMPORTANT: Start from the EXACT frame shown in the attached screenshot. Match everything exactly — character appearance, expression, camera angle, lighting, all object positions. Continue seamlessly. No cuts. No new objects. Same environment. Same shot."
-Then write second-by-second action:
-0-{segment_size//4} sec: [exact visual action]
-{segment_size//4}-{segment_size//2} sec: [exact visual action]
-{segment_size//2}-{3*segment_size//4} sec: [exact visual action]
-{3*segment_size//4}-{segment_size} sec: [exact visual action with end frame freeze description]]
+Be extremely specific about physical actions — not "puppy jumps" but "puppy crouches low, pushes off with both hind legs, ears flying up, mouth open in excitement, reaches 60% of the balloon height before gravity pulls it back down."
 
-END FRAME:
-[Describe the exact last frame — character pose, expression, position, all objects visible, stable and ready for screenshot]
+PROMPT {i}:
+[full detailed prompt here]"""
 
-MOTION PHYSICS:
-[Cause → Effect chain for this segment]
+        prompt_text = safe_generate(prompt_gen)
+        prompts_output.append({
+            "number": i,
+            "beat": beat_text,
+            "text": prompt_text
+        })
 
-═══════════════════════════════════════════════
+    # Continuity checklist
+    continuity_prompt = f"""Create a production continuity checklist for this {style} animated story:
+TITLE: {story_title}
+CHARACTER: {animal}
+{num_prompts} prompts total, {clip_length} seconds each, {duration} seconds total runtime
 
-Generate all {num_prompts} prompts. Every prompt ends on a STABLE FRAME.
-The final prompt delivers the complete story payoff."""
-    return safe_generate(prompt)
+List 10 specific things the creator must check between every prompt to maintain perfect visual continuity.
+Format as a numbered checklist with specific, actionable items — not generic advice."""
+
+    continuity_raw = safe_generate(continuity_prompt)
+
+    return {
+        "character_analysis": char_raw,
+        "first_frame": frame_raw,
+        "beats": beats_raw,
+        "prompts": prompts_output,
+        "continuity": continuity_raw,
+        "num_prompts": num_prompts,
+        "clip_length": clip_length,
+        "duration": duration
+    }
