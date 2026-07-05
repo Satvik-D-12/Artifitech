@@ -177,13 +177,25 @@ streamlit run app.py
 
 # 📸 Screenshots
 
-> Add screenshots of:
+## 🏠 Home
 
-- Home Screen
-- Video Engine
-- Content Studio
-- Story Generator
-- Prompt Package
+![Home](screenshots/home.png)
+
+## 🎬 Video Story Engine
+
+![Video Engine](screenshots/video-engine.png)
+
+## ✍️ Content Studio
+
+![Content Studio](screenshots/content-studio.png)
+
+## 🎥 Production Package
+
+![Production Package](screenshots/production-package.png)
+
+## 🎨 Character & Environment Package
+
+![Character Package](screenshots/character-package.png)
 
 ---
 
